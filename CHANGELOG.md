@@ -9,6 +9,18 @@ reverse chronological by date-of-event. Categories: `Added`, `Changed`, `Removed
 
 ## [Unreleased]
 
+## [2026-04-26c]
+
+### Added
+- `proposals/005-p09-public-release.md` — proposal file for this session's work (P-09 reword + sanitisation sweep + initial public release). Required by `proposals/README.md` convention: every PROPOSE survives `/clear` and session boundaries via its file.
+
+### Changed
+- `proposals/README.md` — row 005 added to index.
+- `PROGRESS.md` — P-09 reword + initial public release logged as completed; GitHub repo link added.
+
+### Process
+- [Proposal 005](proposals/005-p09-public-release.md) DONE — `/code-reviewer` APPROVE; all DoD items green except T3 (pending 2026-05-16 per date-lock).
+
 ## [2026-04-26b]
 
 ### Changed
