@@ -1,0 +1,24 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+    method: GET
+    uri: https://api.stlouisfed.org/fred/series/observations?file_type=json&limit=5&series_id=CPIAUCSL&sort_order=desc&units=lin
+  response:
+    body:
+      string: 'Too Many Requests'
+    headers:
+      Content-Type:
+      - text/plain
+      Retry-After:
+      - '3600'
+    status:
+      code: 429
+      message: Too Many Requests
+version: 1

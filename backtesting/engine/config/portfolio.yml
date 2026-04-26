@@ -1,0 +1,32 @@
+# Portfolio configuration
+start_date: "2025-03-15"
+initial_cash: 200.0
+monthly_contribution: 200.0
+currency: "EUR"
+
+# Constraints
+cash_floor_pct: 0.30
+affordability_cap_pct: 0.25
+trigger_default_pct: -0.08
+whole_shares_only: true
+
+# NAV tier thresholds
+nav_tiers:
+  micro: 2000
+  small: 5000
+  medium: 25000
+
+# Session scheduling
+session_schedule: "third_saturday"
+execution_offset: "next_weekday"  # Monday, or Tuesday if Monday is holiday
+
+# ECB rate — fetched dynamically from ECB Statistical Data Warehouse API
+# No manual entries needed. Engine fetches at session time.
+# Fallback: last known rate from DB if API is down.
+ecb_api:
+  url: "https://data-api.ecb.europa.eu/service/data/FM/D.U2.EUR.4F.KR.MRR_FR.LEV"
+  format: "csvdata"
+
+# Geopolitical/tariff gate — the only truly manual input per session.
+# Provided interactively at session start. Not pre-configured.
+# The engine prompts: "Geopolitical gate status? [GREEN/AMBER/RED]"

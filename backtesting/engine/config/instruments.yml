@@ -1,0 +1,59 @@
+# Seed instruments — loaded into DB on first run.
+# After that, the DB is the source of truth.
+# New instruments are registered via the conversation/CLI:
+#   engine add-instrument --ticker XDWD.DE --theme "Global Equity" --isin IE00BZ02LR44 --ter 0.12
+instruments:
+  PPFB.DE:
+    name: "Xetra-Gold"
+    isin: "DE000A0S9GB0"
+    ter: 0.0
+    theme: "Gold / Crisis Hedge"
+    exchange: "XETRA"
+    currency: "EUR"
+
+  DFNS.PA:
+    name: "VanEck Defense UCITS ETF"
+    isin: "IE000YYE6WK5"
+    ter: 0.55
+    theme: "Defence / Geopolitical"
+    exchange: "Euronext Paris"
+    currency: "EUR"
+
+  IQQH.DE:
+    name: "iShares European Property Yield UCITS ETF"
+    isin: "IE00B0M63284"
+    ter: 0.40
+    theme: "Property / Rate Play"
+    exchange: "XETRA"
+    currency: "EUR"
+
+  IWDA.AS:
+    name: "iShares Core MSCI World UCITS ETF"
+    isin: "IE00B4L5Y983"
+    ter: 0.20
+    theme: "Global Equity"
+    exchange: "Euronext Amsterdam"
+    currency: "EUR"
+
+  EXSA.DE:
+    name: "iShares STOXX Europe 600 UCITS ETF"
+    isin: "DE0002635307"
+    ter: 0.20
+    theme: "European Equity"
+    exchange: "XETRA"
+    currency: "EUR"
+
+  IS3N.DE:
+    name: "iShares Core MSCI EM IMI UCITS ETF"
+    isin: "IE00BKM4GZ66"
+    ter: 0.18
+    theme: "Emerging Markets"
+    exchange: "XETRA"
+    currency: "EUR"
+
+# Macro indicator tickers (yfinance)
+macro_tickers:
+  stoxx: "^STOXX"
+  vix: "^VIX"
+  brent: "BZ=F"
+  eurusd: "EURUSD=X"

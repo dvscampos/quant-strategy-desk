@@ -1,0 +1,18 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+    method: GET
+    uri: https://data-api.ecb.europa.eu/service/data/FM/D.U2.EUR.4F.KR.DFR.LEV?format=jsondata&lastNObservations=1
+  response:
+    body:
+      string: '{"dataSets":[]}'
+    headers:
+      Content-Type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1

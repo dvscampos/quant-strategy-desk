@@ -1,0 +1,23 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+    method: GET
+    uri: https://data-api.ecb.europa.eu/service/data/FM/D.U2.EUR.4F.KR.DFR.LEV?format=jsondata&lastNObservations=1
+  response:
+    body:
+      string: '{"structure":{"dimensions":{"observation":[{"id":"TIME_PERIOD","name":"Time
+        period","values":[{"id":"2026-04-17","name":"2026-04-17"}]}]}},"dataSets":[{"action":"Replace","series":{"0:0:0:0:0:0:0":{"attributes":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"observations":{"0":[2.00,0,0,0,0,0,0,0,0,0,0,0,0,0]}}}}]}'
+    headers:
+      Content-Type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1

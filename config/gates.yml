@@ -1,0 +1,230 @@
+# Deployment Gates, Cash Floor, and Data Staleness Thresholds
+# ----------------------------------------------------------------
+# Single source of truth for numeric thresholds.
+# Prose in docs/RISK_FRAMEWORK.md and docs/STRATEGY_LOGIC.md REFERENCES
+# this file rather than duplicating values. When thresholds change, change
+# them here — not in prose, not in templates.
+#
+# Locked by Proposal 001 (Phase 1A). Phase 1B wires agents and the gate-eval
+# engine to consume this file directly.
+#
+# Consumers (Phase 1B — after this proposal, gate_eval is the canonical consumer):
+#   scripts/data/gate_eval.py  — CANONICAL CONSUMER: snapshot → GateReport
+#   scripts/data/cli.py        — gate_eval subcommand + fetch (reads data_staleness.series)
+#   docs/RISK_FRAMEWORK.md     — §Cash Floor, §VIX Emergency Protocol, §DDP, §Evaluator Failure Protocol
+#   docs/STRATEGY_LOGIC.md     — §Position Limits (cash minimum)
+#
+# -----------------------------------------------------------------------
+# gate_eval.py schema contract (A-C1, DoD #21):
+#
+#   Field naming convention for numeric tier bounds:
+#     green_below: N  →  green.max: N  (strict less-than; GREEN if value < N)
+#     red_above:   N  →  red.min:  N  (strict greater-than; RED if value > N)
+#
+#   In YAML, the above are encoded as:
+#     GREEN: {max: N}   — value < N (no lower bound)
+#     AMBER: {min: A, max: B} — A <= value <= B (both inclusive)
+#     RED:   {min: N}   — value > N (no upper bound)
+#
+#   Equality at a boundary bubbles to the tighter (more cautious) tier:
+#     value == green.max → AMBER (not GREEN)
+#     value == red.min   → AMBER (not RED)
+#     value == amber.min → AMBER (inclusive)
+#     value == amber.max → AMBER (inclusive)
+#
+#   Float-boundary note: computed percentage gates (e.g. stoxx600_vs_50wk_ma)
+#     produce values like 2.0000000000000004 from IEEE-754 arithmetic.
+#     gate_eval uses a 1e-9 epsilon guard on strict-bound comparisons.
+#     Unit tests include ≥1 boundary case per computed-gate type.
+#
+#   gate_eval.py is the ONLY module that reads and enforces these thresholds.
+#   Agents and SKILL.md consume the pre-built GateReport table — they do
+#   NOT re-derive thresholds from memory or recall.
+
+version: 1
+owner: Risk Officer
+last_updated: 2026-04-23
+
+# -----------------------------------------------------------------------
+# Numeric tier evaluation convention (applies to all numeric gates):
+#
+#   GREEN tier:   value < green.max   (max exclusive, no lower bound)
+#     -- or --    value > green.min   (min exclusive, no upper bound)
+#   AMBER tier:   amber.min <= value <= amber.max  (both inclusive)
+#   RED tier:     value > red.min     (min exclusive, no upper bound)
+#     -- or --    value < red.max     (max exclusive, no lower bound)
+#
+# Every tier uses null for an absent bound. The loader (test_gates_schema.py)
+# asserts that tier ranges are contiguous — no gaps, no overlaps.
+# -----------------------------------------------------------------------
+
+# -----------------------------------------------------------------------
+# 8-gate Deployment Gate Check
+# -----------------------------------------------------------------------
+# Three tiers: GREEN (deploy normally), AMBER (deploy at half rate),
+# RED (hold tranche). 3+ AMBER simultaneously → treat as RED.
+
+deployment_gates:
+  hormuz:
+    label: "Strait of Hormuz"
+    kind: categorical
+    tiers:
+      GREEN: "Open"
+      AMBER: "Threatened / exercises"
+      RED:   "Closed"
+    red_action: "Hold tranche"
+
+  brent:
+    label: "Brent crude"
+    kind: numeric
+    units: "USD_per_bbl"
+    tiers:
+      GREEN: {max: 80}
+      AMBER: {min: 80, max: 100}
+      RED:   {min: 100}
+    red_action: "Reduce equity target"
+
+  ecb:
+    label: "ECB decision"
+    kind: categorical
+    tiers:
+      GREEN: "Hold or cut"
+      AMBER: "Hawkish rhetoric shift"
+      RED:   "Surprise hike"
+    red_action: "Reassess allocation"
+
+  us_payrolls:
+    label: "US payrolls (non-farm, MoM change)"
+    kind: numeric
+    units: "chg_thousands_of_jobs"
+    tiers:
+      GREEN: {min: 150}
+      AMBER: {min: 0, max: 150}   # 0–50 folded into AMBER (stalling ≠ contracting)
+      RED:   {max: 0}             # any negative print = contracting
+    red_action: "Hold tranche; increase gold"
+
+  vix:
+    label: "VIX"
+    kind: numeric
+    units: "index"
+    tiers:
+      GREEN: {max: 20}
+      AMBER: {min: 20, max: 30}
+      RED:   {min: 30}            # > 30 triggers vix_emergency protocol below
+    red_action: "See vix_emergency protocol"
+
+  eur_usd:
+    label: "EUR/USD"
+    kind: numeric
+    units: "rate"
+    tiers:
+      GREEN: {min: 1.10}
+      AMBER: {min: 1.05, max: 1.10}
+      RED:   {max: 1.05}
+    red_action: "FX-impact review on all non-EUR positions"
+
+  tariff:
+    label: "Tariff severity"
+    kind: categorical
+    tiers:
+      GREEN: "No escalation"
+      AMBER: "New threats / negotiations"
+      RED:   "Enacted escalation 25%+"
+    red_action: "Emergency brake"
+
+  stoxx600_vs_50wk_ma:
+    label: "STOXX 600 vs 50-week MA"
+    kind: numeric
+    units: "pct_deviation_from_ma"
+    tiers:
+      GREEN: {min: 2}              # clearly above MA (> +2%)
+      AMBER: {min: -2, max: 2}     # straddling MA (within ±2%)
+      RED:   {max: -2}             # clearly below MA (< -2%)
+    red_action: "Abort European equity deployment"
+
+# Aggregate rule applied after classifying each gate individually.
+gate_aggregate:
+  amber_count_escalation: 3   # 3+ AMBER simultaneously → treat as RED
+  action_green:  "Deploy normally"
+  action_amber:  "Deploy at half rate"
+  action_red:    "Hold tranche"
+
+# -----------------------------------------------------------------------
+# VIX Emergency Protocol — extends deployment_gates.vix with a 4th tier.
+# -----------------------------------------------------------------------
+vix_emergency:
+  tiers:
+    GREEN:     {max: 20}
+    AMBER:     {min: 20, max: 30}
+    RED:       {min: 30, max: 35}
+    EMERGENCY: {min: 35}
+
+# -----------------------------------------------------------------------
+# Cash Floor — tiered by NAV.
+# -----------------------------------------------------------------------
+# Deployment constraint, not a risk control.
+# Micro-NAV floor is user-defined at onboarding (local/INVESTOR_PROFILE.md).
+cash_floor:
+  tiers:
+    - nav_below: 2000
+      floor_pct: null
+      label: "Micro-NAV"
+    - nav_below: 10000
+      floor_pct: 15
+      label: "Standard"
+    - nav_above_or_equal: 10000
+      floor_pct: 10
+      label: "Scaled"
+
+# -----------------------------------------------------------------------
+# Data Degradation Protocol — per-series staleness thresholds.
+# -----------------------------------------------------------------------
+# Staleness = (snapshot.as_of date) − (series.vintage date).
+# FRED vintage = realtime_start (official release date).
+# ECB vintage = observation as_of date (SDMX provides no release timestamp;
+#   thresholds below are calibrated to account for ECB publication lags).
+#
+# Session-level rule: ≥ 2 Tier 1 series STALE/RED → session RED
+# (halve deployment or DEFER execution).
+
+data_staleness:
+  session_red_min_stale_series: 2
+
+  series:
+    # FRED series
+    CPIAUCSL:
+      source: FRED
+      amber_age_days: 45
+      red_age_days: 60
+    UNRATE:
+      source: FRED
+      amber_age_days: 45
+      red_age_days: 60
+    PAYEMS:
+      source: FRED
+      units_param: chg             # fetch MoM change, not level (see L16)
+      amber_age_days: 45
+      red_age_days: 60
+    VIXCLS:
+      source: FRED
+      amber_age_days: 5
+      red_age_days: 10
+
+    # ECB series
+    DFR:
+      source: ECB
+      amber_age_days: 60
+      red_age_days: 90
+    ICP.M.U2.N.000000.4.ANR:
+      source: ECB
+      amber_age_days: 45
+      red_age_days: 60
+    EXR.D.USD.EUR.SP00.A:
+      source: ECB
+      amber_age_days: 5
+      red_age_days: 10
+
+  retry:
+    max_attempts: 3
+    backoff_seconds_base: 1.5
+    max_retry_after_seconds: 60    # cap Retry-After header; abort DDP if exceeded

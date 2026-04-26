@@ -1,0 +1,18 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+    method: GET
+    uri: https://api.stlouisfed.org/fred/series/observations?file_type=json&limit=5&series_id=CPIAUCSL&sort_order=desc&units=lin
+  response:
+    body:
+      string: 'not valid json {'
+    headers:
+      Content-Type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1

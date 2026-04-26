@@ -1,0 +1,71 @@
+# Agent configuration — roles, pools, rotation rules
+
+roles:
+  risk:
+    fixed: "Two Sigma Risk"
+    upgrade_nav: 5000  # Paired model above this NAV
+
+  macro:
+    pool:
+      - "Bridgewater Macro"
+      - "AQR Factor Model"
+      - "Man Group Portfolio"
+    max_consecutive: 2
+
+  signal:
+    pool:
+      - "Citadel Alpha"
+      - "Point72 ML Alpha"
+      - "D.E. Shaw StatArb"
+      - "AQR Factor Model"
+      - "Dimensional Backtester"
+    max_consecutive: 2
+
+  architect:
+    pool:
+      - "GS Quant Architect"
+      - "Jane Street MM"
+      - "Man Group Portfolio"
+    max_consecutive: 2
+
+  challenger:
+    pool: "any_remaining"
+    max_consecutive: 2
+
+# These agents can fill only ONE slot per session
+exclusivity:
+  - "Man Group Portfolio"
+  - "AQR Factor Model"
+
+# All 15 Phase 7 agents
+phase7_agents:
+  - name: "GS Quant Architect"
+    yml: "gs_quant_architect.yml"
+  - name: "Renaissance Backtesting"
+    yml: "renaissance_backtesting.yml"
+  - name: "Two Sigma Risk"
+    yml: "two_sigma_risk.yml"
+  - name: "Citadel Alpha"
+    yml: "citadel_alpha.yml"
+  - name: "Jane Street MM"
+    yml: "jane_street_mm.yml"
+  - name: "AQR Factor Model"
+    yml: "aqr_factor_model.yml"
+  - name: "D.E. Shaw StatArb"
+    yml: "de_shaw_statarb.yml"
+  - name: "Bridgewater Macro"
+    yml: "bridgewater_macro.yml"
+  - name: "Bloomberg Data Pipeline"
+    yml: "bloomberg_data_pipeline.yml"
+  - name: "Virtu Execution"
+    yml: "virtu_execution.yml"
+  - name: "Point72 ML Alpha"
+    yml: "point72_ml_alpha.yml"
+  - name: "Man Group Portfolio"
+    yml: "man_group_portfolio.yml"
+  - name: "Millennium Live Trading"
+    yml: "millennium_live_trading.yml"
+  - name: "Dimensional Backtester"
+    yml: "dimensional_factor_backtester.yml"
+  - name: "GS Compliance"
+    yml: "gs_compliance.yml"

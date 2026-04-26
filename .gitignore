@@ -1,0 +1,61 @@
+# Secrets
+.env*
+!.env.example
+
+# Personal / runtime state — structural segregation
+local/*
+!local/.gitkeep
+!local/templates/
+
+# Tier 1 HTTP response cache (repo-scoped infra, not personal data)
+data/.http_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.obsidian/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Data (large files — store externally)
+**/*.db
+**/*.sqlite
+data/*.csv
+data/*.parquet
+!data/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage

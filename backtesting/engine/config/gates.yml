@@ -1,0 +1,32 @@
+# Deployment gate definitions
+
+gates:
+  - name: "STOXX 600 vs 50wk MA"
+    type: "computed"
+    green: "stoxx > stoxx_ma50wk"
+    amber: "stoxx > stoxx_ma50wk * 0.98"
+    red: "stoxx <= stoxx_ma50wk * 0.98"
+    description: "GREEN if STOXX above 50-week MA"
+
+  - name: "VIX"
+    type: "computed"
+    green: "vix < 20"
+    amber: "20 <= vix < 30"
+    red: "vix >= 30"
+    description: "Volatility index — fear gauge"
+
+  - name: "ECB stance"
+    type: "manual"
+    description: "From portfolio.yml ecb_rates. GREEN = easing/neutral, AMBER = hawkish, RED = tightening"
+
+  - name: "Positions vs triggers"
+    type: "computed"
+    description: "GREEN if all positions above -8% trigger with >3% buffer"
+
+  - name: "Tariff / Geopolitical"
+    type: "manual"
+    description: "From portfolio.yml geopolitical. Manual assessment each session."
+
+  - name: "Cash floor"
+    type: "computed"
+    description: "GREEN if cash >= 30% NAV"

@@ -1,0 +1,5 @@
+# Skill path overrides for this project.
+# Overrides default paths used by global skills when they write to the filesystem.
+
+retro:
+  archive_dir: local/retros/
