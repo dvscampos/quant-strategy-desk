@@ -18,6 +18,10 @@ reverse chronological by date-of-event. Categories: `Added`, `Changed`, `Removed
 
 ### Added
 - `proposals/006-windows-git-prereq-readme.md` — proposal file for Windows Git prerequisite documentation update.
+- `proposals/007-war-room-first-run-guard.md` — proposal file for first-run pre-flight guard.
+
+### Fixed
+- `.claude/commands/war-room/SKILL.md` — added Pre-Flight: First-Run Detection block before Phase 0; skill now halts with an onboarding redirect when `local/INVESTOR_PROFILE.md` is missing or empty (zero-byte), instead of silently stalling at Step A (Proposal 007).
 
 ### Process
 - [Proposal 006](proposals/006-windows-git-prereq-readme.md) DONE — LIGHT doc change; governance 2/2; no code modified.

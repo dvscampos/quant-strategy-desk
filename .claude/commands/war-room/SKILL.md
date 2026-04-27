@@ -8,6 +8,33 @@ allowed-tools: Bash(python3:*), Read, Write, Edit, Glob, Grep, Agent
 
 Run all three phases sequentially. Do not skip any phase.
 
+## Pre-Flight: First-Run Detection
+
+> **Run this BEFORE Phase 0.** If the workspace has never been initialised, a War Room session cannot proceed — Phase 0 checkpoint recovery and Pre-Session Preparation both assume `local/` artefacts exist. Without this guard, the skill silently stalls at Step A (Portfolio Valuation) because there is no `local/PORTFOLIO.md` or `local/INVESTOR_PROFILE.md` to read.
+
+```python
+import pathlib
+profile = pathlib.Path("local/INVESTOR_PROFILE.md")
+# st_size > 0 catches partial-init failures that left a 0-byte file behind.
+if not profile.exists() or profile.stat().st_size == 0:
+    print("FIRST_RUN_DETECTED")
+else:
+    print("PROFILE_OK")
+```
+
+If the check prints `FIRST_RUN_DETECTED`:
+
+1. **Stop the skill immediately. Do NOT enter Phase 0.**
+2. Tell the user verbatim: *"Your investor profile hasn't been set up yet — `/war-room` can't run without it. Onboarding takes about 2 minutes (11 questions + a one-line setup script). Want me to run it now?"*
+3. If the user confirms, follow the **First-Run Detection** flow in `CLAUDE.md` (the 11-question onboarding, then `scripts/init_workspace.py`, then hydration of `local/INVESTOR_PROFILE.md`, `docs/COMPLIANCE.md`, and `brainstorms/_TEMPLATE.md`). After hydration completes, ask the user whether to proceed with `/war-room` in a fresh session or continue now.
+4. If the user declines, exit the skill cleanly. Do not write any files.
+
+**User confirmation is required.** Do NOT auto-trigger onboarding — `scripts/init_workspace.py` writes to `local/`, modifies `docs/COMPLIANCE.md`, and edits `brainstorms/_TEMPLATE.md`. The user must explicitly opt in.
+
+If the check prints `PROFILE_OK`, proceed to Phase 0.
+
+---
+
 ## Phase 0: Checkpoint Recovery
 
 Before starting any work, check for a session checkpoint from a previous (interrupted) run:
