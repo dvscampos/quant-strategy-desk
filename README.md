@@ -24,10 +24,13 @@
 - **A brokerage account** — IBKR, Degiro, Trading212, and XTB are all supported.
 - **A free FRED API key** — sign up at [fred.stlouisfed.org](https://fred.stlouisfed.org) (2 minutes).
 - **Python 3.11+** — only needed if you later run the backtesting engine; not required for the monthly War Room.
+- **Windows only:** [Git for Windows](https://git-scm.com/downloads/win) — Claude Code uses Git's built-in bash shell to run local sessions. You won't need to use Git for anything else; just install it with default settings before opening Claude Code.
 
 ---
 
 ## Quick start
+
+> **Windows users:** install Git for Windows first (see Requirements above), then continue below.
 
 ```bash
 # 1. Clone the repo

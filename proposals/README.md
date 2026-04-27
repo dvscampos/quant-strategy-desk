@@ -21,6 +21,7 @@
 | 003 | Data Layer Integration   | DONE      | Daniel | 2026-04-25 | 2026-04-26  |
 | 004 | Sanitisation Sweep & CHANGELOG Introduction | DONE | Daniel | 2026-04-26 | 2026-04-26  |
 | 005 | P-09 Cold-Reader Reword + Public Release Sanitisation Sweep | DONE | Daniel | 2026-04-26 | 2026-04-26  |
+| 006 | Add Windows Git prerequisite to README | DONE  | Daniel | 2026-04-27 | 2026-04-27  |
 
 ## When to write a proposal
 

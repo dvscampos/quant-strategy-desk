@@ -9,6 +9,19 @@ reverse chronological by date-of-event. Categories: `Added`, `Changed`, `Removed
 
 ## [Unreleased]
 
+## [2026-04-27]
+
+### Changed
+- `README.md` §Requirements — added Windows-only Git for Windows prerequisite with explanation that Claude Code requires `bash.exe` as its shell (not for version control).
+- `README.md` §Quick Start — added Windows callout blockquote above the clone command block.
+- `proposals/README.md` — row 006 added to index.
+
+### Added
+- `proposals/006-windows-git-prereq-readme.md` — proposal file for Windows Git prerequisite documentation update.
+
+### Process
+- [Proposal 006](proposals/006-windows-git-prereq-readme.md) DONE — LIGHT doc change; governance 2/2; no code modified.
+
 ## [2026-04-26c]
 
 ### Added
