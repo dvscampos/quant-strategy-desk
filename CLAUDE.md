@@ -210,9 +210,6 @@ After writing a session file, **count its sections against this checklist**. If 
 | `/code-reviewer` | Diff review (logic, types, security) | Global |
 | `/persona-review` | Post-impl sign-off from War Room personas | Global |
 | `/process-sheriff` | Governance audit checkpoint | Global |
-| `/audit` | Health check: data freshness, risk parameter validation, doc sync | Local |
-| `/backtest` | Run standardised backtest with bias checks and tear sheet output | Local |
-| `/risk-check` | Invoke Risk Officer for portfolio-level risk assessment | Local |
 | `/war-room` | Launch monthly War Room brainstorm (requires Opus — see below) | Local |
 
 ## Agent Model Selection

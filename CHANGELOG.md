@@ -11,10 +11,14 @@ reverse chronological by date-of-event. Categories: `Added`, `Changed`, `Removed
 
 ## [2026-04-27]
 
+### Removed
+- `CLAUDE.md` §Skills table — deleted three phantom Local skill rows (`/audit`, `/backtest`, `/risk-check`) that advertised skills not present on disk; build-out deferred as Staged Improvement S-13 (Proposal 008).
+
 ### Changed
+- `PROGRESS.md` §Staged Improvements — added S-13 logging the deferred build-out of `/audit`, `/backtest`, `/risk-check` with trigger conditions and portability note.
 - `README.md` §Requirements — added Windows-only Git for Windows prerequisite with explanation that Claude Code requires `bash.exe` as its shell (not for version control).
 - `README.md` §Quick Start — added Windows callout blockquote above the clone command block.
-- `proposals/README.md` — row 006 added to index.
+- `proposals/README.md` — rows 006, 007, 008 added to index.
 
 ### Added
 - `proposals/006-windows-git-prereq-readme.md` — proposal file for Windows Git prerequisite documentation update.
