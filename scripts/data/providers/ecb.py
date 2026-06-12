@@ -58,7 +58,7 @@ class EcbProvider(DataProvider):
     def known_series(cls) -> set[str]:
         return set(_SERIES_REGISTRY.keys())
 
-    def fetch(self, series_id: str) -> SeriesObservation:
+    def fetch(self, series_id: str, *, max_age_days: float | None) -> SeriesObservation:
         if series_id not in _SERIES_REGISTRY:
             raise KeyError(
                 f"ECB series alias {series_id!r} not in registry. "
@@ -67,7 +67,7 @@ class EcbProvider(DataProvider):
         dataflow, key, units_label = _SERIES_REGISTRY[series_id]
         url = f"{_BASE_URL}/{dataflow}/{key}"
         params = {"format": "jsondata", "lastNObservations": "1"}
-        body = self._client.get(url, params=params)
+        body = self._client.get(url, params=params, max_age_days=max_age_days)
         value, as_of = _parse_sdmx_json(body, series_id)
         return SeriesObservation(
             source=self.source_name,

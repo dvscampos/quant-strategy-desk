@@ -36,6 +36,6 @@ class DataProvider(ABC):
     rate_limit: ClassVar[float]
 
     @abstractmethod
-    def fetch(self, series_id: str) -> SeriesObservation:
+    def fetch(self, series_id: str, *, max_age_days: float | None) -> SeriesObservation:
         """Return the latest observation for series_id."""
         raise NotImplementedError

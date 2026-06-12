@@ -24,6 +24,27 @@
 | 006 | Add Windows Git prerequisite to README | DONE  | Daniel | 2026-04-27 | 2026-04-27  |
 | 007 | First-run pre-flight guard for /war-room skill | DONE  | Daniel | 2026-04-27 | 2026-04-27  |
 | 008 | Phantom skills cleanup (first deferral) | DONE  | Daniel | 2026-04-27 | 2026-04-27  |
+| 009 | S-14 Resolve redundant agent pairs (persona-eval differentiation) | APPROVED | Daniel | 2026-05-15 | 2026-05-15  |
+| 010 | S-15 citadel_alpha lift + S-16 D3 Actionability batch across persona library | DONE | Daniel | 2026-05-15 | 2026-05-15  |
+| 011 | python-dotenv auto-load (eliminate manual `export` step) | DONE | Daniel | 2026-05-15 | 2026-05-15  |
+| 012 | Citadel + Two-Sigma review_prompt example-trio domain polish | DONE | Daniel | 2026-05-16 | 2026-05-16  |
+| 013 | Port `/skill-audit` from Gemini → Claude Code (global; archived at `~/.claude/governance-overhaul/proposals/013-skill-audit-port.md`) | DRAFT (global) | Daniel | 2026-05-16 | 2026-05-16  |
+| 014 | S-19 — Carry-forward instrument-compliance guard to pimco + de_shaw | DONE | Daniel | 2026-05-16 | 2026-05-16  |
+| 015 | Roadmap housekeeping — de-date War Room header, refresh S-17/S-18 rationale, record FRED-key decision | DONE | Daniel | 2026-05-20 | 2026-05-20  |
+| 016 | S-17 renaissance_backtesting lift + S-18 virtu_execution lift (bundle) | SUPERSEDED | Daniel | 2026-05-20 | 2026-05-21  |
+| 017 | S-17 — renaissance_backtesting persona quality lift (standalone) | DONE | Daniel | 2026-05-21 | 2026-05-21  |
+| 018 | S-18 — virtu_execution persona re-architecture (standalone) | DONE | Daniel | 2026-05-21 | 2026-05-22  |
+| 019 | S-20 — AGENTS.md archetype-line correction + gs_compliance EN/PT example tidy | DONE | Daniel | 2026-05-22 | 2026-05-22  |
+| 020 | Surface HYPOTHESIS_LOG.md read in /war-room SKILL.md Phase 4 (pointer to template) | SUPERSEDED | Daniel | 2026-06-02 | 2026-06-02  |
+| 021 | Hypothesis-log lifecycle — pointer + plain anti-bias line + stamp-in-place close-out | DONE | Daniel | 2026-06-02 | 2026-06-02  |
+| 022 | PORTFOLIO partner-name correction (Sofia→PPDC) + S-21 IBKR read-only snapshot roadmap item | DONE | Daniel | 2026-06-02 | 2026-06-02  |
+| 023 | S-22 — HTTP-cache per-series TTL (amber-keyed) + `--no-cache` on macro fetch | DONE | Daniel | 2026-06-03 | 2026-06-03  |
+| 024 | S-21+S-23 — ISIN-anchored pricing + read-only IBKR `--snapshot` (bare-ticker trap fix) | SUPERSEDED | Daniel | 2026-06-04 | 2026-06-04  |
+| 025 | `reconcile_ibkr.py` column-index foundation fix (10-column ISIN schema) | DONE | Daniel | 2026-06-04 | 2026-06-04  |
+| 026 | S-23 ISIN-anchored pricing — bare-ticker guard + portable identity contract (S-21 `--snapshot` split out) | DONE | Daniel | 2026-06-04 | 2026-06-04  |
+| 027 | S-30 Mechanical pre-commit sanitisation guard — blocks private-literal leaks into tracked diffs; cloner-portable | DONE | Daniel | 2026-06-04 | 2026-06-09  |
+| 028 | Reconcile Summary canonical contract (S-27) + currency-aware pricing (S-28) | DONE | Daniel | 2026-06-10 | 2026-06-10  |
+| 029 | Pre-push sanitisation remediation — scrub 24 range-diff collisions + squash-clean + local archive + pre-push hook | APPROVED | Daniel | 2026-06-10 | 2026-06-11  |
 
 ## When to write a proposal
 

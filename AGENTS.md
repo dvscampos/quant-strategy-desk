@@ -95,8 +95,8 @@ Represents MiFID II, ESMA regulations, and European market conduct rules.
 
 ### War Room Strike Team (5 agents, see `brainstorms/_TEMPLATE.md`)
 - **Risk Guardian**: Two Sigma Risk (fixed). Upgrade to paired Risk at NAV > 5,000.
-- **Macro Strategist**: Rotating (Bridgewater, AQR Factor, Man Group). Max 2 consecutive.
-- **Signal Generator**: Rotating (Citadel, Point72, D.E. Shaw, AQR*, Dimensional). Max 2 consecutive.
+- **Macro Strategist**: Rotating (PIMCO Curve, AQR Factor, Man Group). Max 2 consecutive. Pool spans `yield-curve-regime` and `macro-narrative` frameworks for ≥2-distinct-framework invariant compliance.
+- **Signal Generator**: Rotating (Citadel, Point72, D.E. Shaw, AQR*, Dimensional). Max 2 consecutive. D.E. Shaw uses `structural` (share-class / cross-listed / tracking-difference) framework; others use `quantitative`.
 - **Strategy Architect**: Rotating (GS Architect, Jane Street, Man Group*). Max 2 consecutive. Owns Phase 5 Instrument Verification: proposes tickers to verify post-thesis, runs the Data Failure Protocol on any yfinance miss (retry → alternate ticker format → alternate exchange → alternate source) before declaring an instrument unavailable.
 - **Counter-Regime Agent** (MANDATORY, parallel to Macro): Rotating Sonnet sub-agent explicitly instructed to argue the strongest alternative regime call with its own invalidators and sizing implications. Does not count against Strike Team rotation slots.
 - **Challenger**: Rotating (any agent not already on the team). Max 2 consecutive.
@@ -109,6 +109,24 @@ Represents MiFID II, ESMA regulations, and European market conduct rules.
 Each persona speaks in their authentic voice during `/propose` and `/persona-review`. They do **not** mechanically answer a checklist — they engage with the plan as a real stakeholder would, raising concerns, pushing back, or endorsing with specific evidence.
 
 **A review where every persona agrees and raises no concerns is a sign of insufficient scrutiny.**
+
+### Actionability contract (Proposal 010, S-16)
+
+Every persona's `review_prompt` enforces the same downstream output shape: for every risk raised, the persona MUST provide a **severity tag** (HIGH / MEDIUM / LOW by capital impact), a **specific remediation** (concrete domain-native action — not "review this" or "be careful"), and a **priority order** (HIGH → MEDIUM → LOW, irreversible risks first). Generic remediations are rejected at Phase 8.
+
+Each persona ships its own **domain-native fix examples** so cross-domain bleed (e.g. a compliance persona recommending "stop at 88.00") is structurally prevented. The examples differ by archetype:
+- Macro → gate / regime / deployment-trigger fixes
+- Risk → stop / sizing / VaR / drawdown fixes
+- Execution → order-type / timing / commission-drag / fractional-share fixes
+- Quant signal (Citadel, point72, AQR, dimensional) → IC / decay / multiple-testing / OOS validation / capacity fixes
+- Overfit detection (renaissance) → calibration-window / deflated-Sharpe / purged-k-fold / turnover-cost-ratio fixes
+- Data / pipeline → snapshot SHA / freshness / cross-source variance fixes
+- Compliance → KID / best-ex / UCITS substitution / FIFO tracking fixes
+- Architecture (gs_quant_architect) → shared util / type guards / explicit error handling fixes
+- Portfolio (man_group) → HHI / drift / overlay drawdown fixes
+- Market-making (jane_street) → spread / VIX-halt / adverse-selection fixes
+- Live trading (millennium) → intraday kill switch / news halt / liquidity-drop reduce
+- Yield curve (pimco) → 2s10s duration / real-rate path / TIPS rotation
 
 ---
 

@@ -44,7 +44,7 @@ class FredProvider(DataProvider):
         self._client = http_client
         self._api_key = os.environ["FRED_API_KEY"]
 
-    def fetch(self, series_id: str) -> SeriesObservation:
+    def fetch(self, series_id: str, *, max_age_days: float | None) -> SeriesObservation:
         meta = _SERIES_META.get(series_id, _DEFAULT_META)
         # Pass api_key in params (FRED does not support auth headers).
         # The HTTP cache key hashes (url, params) including the key —
@@ -57,7 +57,7 @@ class FredProvider(DataProvider):
             "limit": str(_LOOKBACK),
             "units": meta["units_param"],
         }
-        body = self._client.get(f"{_BASE_URL}/series/observations", params=params)
+        body = self._client.get(f"{_BASE_URL}/series/observations", params=params, max_age_days=max_age_days)
 
         import json
         data = json.loads(body)

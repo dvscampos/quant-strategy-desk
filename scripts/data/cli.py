@@ -39,7 +39,7 @@ def _load_gates() -> dict:
     return yaml.safe_load(GATES_PATH.read_text(encoding="utf-8"))
 
 
-def _build_providers(gates: dict) -> dict:
+def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
     """Return {series_id: provider_instance} for all configured series.
 
     L5: Validates every series alias is resolvable before any network I/O.
@@ -55,6 +55,7 @@ def _build_providers(gates: dict) -> dict:
         max_retries=retry["max_attempts"],
         backoff_base=retry["backoff_seconds_base"],
         max_retry_after=retry["max_retry_after_seconds"],
+        skip_cache=no_cache,
     )
     fred = FredProvider(http)
     ecb = EcbProvider(http)
@@ -80,12 +81,14 @@ def _build_providers(gates: dict) -> dict:
     return providers
 
 
-def _fetch_all(providers: dict) -> list:
+def _fetch_all(providers: dict, gates: dict) -> list:
     from scripts.data.http_client import HttpError
     observations = []
+    series_cfg = gates["data_staleness"]["series"]
     for series_id, provider in providers.items():
         try:
-            obs = provider.fetch(series_id)
+            max_age = series_cfg[series_id]["amber_age_days"]
+            obs = provider.fetch(series_id, max_age_days=max_age)
             observations.append(obs)
             log.info("Fetched %s: %s = %s (vintage %s)", obs.source, series_id, obs.value, obs.vintage)
         except (HttpError, Exception) as exc:
@@ -113,8 +116,8 @@ def _cmd_fetch(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     gates = _load_gates()
-    providers = _build_providers(gates)
-    observations = _fetch_all(providers)
+    providers = _build_providers(gates, no_cache=args.no_cache)
+    observations = _fetch_all(providers, gates)
 
     from scripts.data.snapshot import SnapshotWriter
     import json
@@ -149,6 +152,7 @@ def main() -> None:
     fetch_p = sub.add_parser("fetch", help="Fetch Tier 1 macro snapshot")
     fetch_p.add_argument("--session", required=True, help="Session in YYYY-MM format")
     fetch_p.add_argument("--force", action="store_true", help="Overwrite existing snapshot")
+    fetch_p.add_argument("--no-cache", action="store_true", help="Bypass the HTTP cache; force a live fetch for every series (War Room pre-flight). NOTE: disables the DDP stale-cache fallback — a fetch failure raises and aborts the run.")
 
     # ---- gate_eval subcommand ----
     gate_p = sub.add_parser(

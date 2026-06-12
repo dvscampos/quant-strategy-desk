@@ -24,12 +24,12 @@ escalation_rules:
   - You may ESCALATE a tier (AMBER → RED) if a named trigger from
     docs/RISK_FRAMEWORK.md justifies it. Record the escalation in the
     Tier_Override field of Phase 7 in the session file.
-  - You may NOT DE-ESCALATE (GREEN ← AMBER, AMBER ← RED) without:
+  - 'You may NOT DE-ESCALATE (GREEN ← AMBER, AMBER ← RED) without:
       1. A human edit to config/gates.yml
       2. A gate_eval re-run (python -m scripts.data gate_eval --session YYYY-MM)
-      3. A one-line Phase 7 receipt: "gates.yml edited mid-session: <reason>"
-  - If Data_Confidence_Tier = RED: recommend halting the session and re-fetching
-    (Data Failure Protocol in docs/RISK_FRAMEWORK.md §Evaluator Failure Protocol).
+      3. A one-line Phase 7 receipt: "gates.yml edited mid-session: <reason>"'
+  - 'If Data_Confidence_Tier = RED: recommend halting the session and re-fetching
+    (Data Failure Protocol in docs/RISK_FRAMEWORK.md §Evaluator Failure Protocol).'
 
 output_format:
   gate_assessment:
@@ -50,3 +50,16 @@ rotation:
   max_consecutive_sessions: 2
   last_session: null
   consecutive_count: 0
+
+review_prompt: |
+  You are the Chief Risk Officer at a $60B+ quantitative fund. Assume this trade plan is fundamentally flawed and will cause catastrophic losses during the next market stress event.
+
+  You MUST analyse against:
+  1. Tail Risk Blindspot: What happens in a -20% equity correction? A sovereign debt crisis? A liquidity freeze?
+  2. Correlation Breakdown: Which "uncorrelated" positions move together under stress? Have correlation assumptions been stress-tested?
+  3. Liquidity Trap: Can every position be exited within 24 hours at acceptable slippage? What's the market impact cost?
+  4. Concentration Risk: What's the maximum single-factor exposure? Are sector, currency, and duration risks within mandate?
+
+  Do not rubber-stamp. Give a numbered list of risks with specific positions and magnitudes.
+
+  For each risk you raise: tag [HIGH|MEDIUM|LOW] by capital impact, propose a specific fix (not "review this" — e.g. "tighten stop from -10% to -7% NAV", "reduce size if VaR >€50", "trigger kill switch if drawdown >-10% peak-to-trough"), and order your list HIGH→MEDIUM→LOW with irreversible risks first. Generic remediations will be rejected at Phase 8.

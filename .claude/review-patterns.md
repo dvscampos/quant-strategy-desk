@@ -41,3 +41,22 @@ These are project-specific patterns and governance checks that apply to the Quan
 **Mechanical scan (executor only)** — the patterns below are the executor's grep candidates; the gating reviewer applies the semantic rule above. Patterns: `\bv[12]\.\d\b`, `\bSession #\d+\b`, `\bPhase 1[AB]\b`, `\bProposal \d{3}\b`, `\bsince Session\b`, `\bintroduced in\b`, `\bv\d era\b`. Zero **unresolved** matches at close — every match is either stripped, converted to a markdown citation, or kept with a one-line justification in the originating proposal's Status Log.
 
 **CHANGELOG-append rule** — every material framework change closes by appending a [`CHANGELOG.md`](../CHANGELOG.md) entry under `[Unreleased]` (or a new dated section). Architectural decisions go under `### Decisions` with persona attribution (`- (X, Persona Name) <decision> — <rationale>`). A pull request that mutates a file outside `local/` without a CHANGELOG entry should be flagged.
+
+## Adversarial Vectors
+
+When reviewing any change in this project, analyse against:
+
+1. **Wallet Bleed (API Cost Amplification)**: Does this change introduce or modify API calls, model invocations, or data fetches that could amplify costs? Check: retry loops, unbounded pagination, model-tier selection. A single unguarded retry loop can turn a $0.50 call into a $50 session.
+
+2. **Thesis Drift (Circular Justification)**: Is the investment thesis being silently reframed to match current positions rather than current evidence? Look for: original thesis statements being softened, conviction scores drifting without new evidence, "the thesis has evolved" without a formal thesis review.
+
+3. **Regime Hallucination (False Confidence)**: Is the macro regime classification backed by data, or is the agent asserting a regime with high confidence based on narrative rather than indicators? Check: every regime call must cite ≥2 quantitative indicators (VIX, yield curve, credit spreads, etc.).
+
+4. **Position Concentration (Hidden Correlation)**: Are supposedly diversified positions actually correlated through shared factor exposure? Check: sector overlap, currency exposure, duration risk, credit quality clustering. Two "different" positions in European banks and European insurance are both short rates.
+
+## Critical Patterns
+
+- Any change to `agents/*.yml` must preserve the `analytical_framework`, `gate_consumption`, `role`, and `system_prompt` fields unchanged unless the PROPOSE explicitly targets them.
+- War Room rotation rules: max 2 consecutive sessions per agent, ≥2 distinct `analytical_framework` types per Strike Team.
+- All thesis modifications require formal thesis review through `/war-room`.
+- INVESTOR_PROFILE.md constraints are non-negotiable hard limits.

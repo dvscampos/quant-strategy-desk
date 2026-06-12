@@ -4,6 +4,10 @@ Phase 1A: snapshots are written, hashed and committed as audit trail.
 No agent prompt consumes them yet — that lands in Phase 1B.
 """
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from scripts.data.provider import DataProvider, SeriesObservation
 from scripts.data.snapshot import SnapshotWriter
 

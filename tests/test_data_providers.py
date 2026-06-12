@@ -50,7 +50,7 @@ def _ecb_client() -> EcbProvider:
 @_VCR.use_cassette(str(FIXTURES / "fred_cpiaucsl_success.yaml"))
 def test_fred_success():
     with patch.dict(os.environ, {"FRED_API_KEY": "REDACTED"}):
-        obs = _fred_client().fetch("CPIAUCSL")
+        obs = _fred_client().fetch("CPIAUCSL", max_age_days=None)
     assert obs.source == "FRED"
     assert obs.series_id == "CPIAUCSL"
     assert obs.value == pytest.approx(319.082)
@@ -65,7 +65,7 @@ def test_fred_success():
 def test_fred_429_exceeds_cap():
     with patch.dict(os.environ, {"FRED_API_KEY": "REDACTED"}):
         with pytest.raises(HttpError, match="Retry-After=3600"):
-            _fred_client(max_retry_after=60.0).fetch("CPIAUCSL")
+            _fred_client(max_retry_after=60.0).fetch("CPIAUCSL", max_age_days=None)
 
 
 # ---- FRED malformed JSON ----
@@ -74,14 +74,14 @@ def test_fred_429_exceeds_cap():
 def test_fred_malformed_response():
     with patch.dict(os.environ, {"FRED_API_KEY": "REDACTED"}):
         with pytest.raises(Exception):
-            _fred_client().fetch("CPIAUCSL")
+            _fred_client().fetch("CPIAUCSL", max_age_days=None)
 
 
 # ---- ECB success ----
 
 @_VCR.use_cassette(str(FIXTURES / "ecb_dfr_success.yaml"))
 def test_ecb_success():
-    obs = _ecb_client().fetch("DFR")
+    obs = _ecb_client().fetch("DFR", max_age_days=None)
     assert obs.source == "ECB"
     assert obs.series_id == "DFR"
     assert obs.value == pytest.approx(2.00)
@@ -95,11 +95,11 @@ def test_ecb_success():
 @_VCR.use_cassette(str(FIXTURES / "ecb_malformed.yaml"))
 def test_ecb_malformed_response():
     with pytest.raises(HttpError, match="failed to parse SDMX-JSON"):
-        _ecb_client().fetch("DFR")
+        _ecb_client().fetch("DFR", max_age_days=None)
 
 
 # ---- ECB unknown alias → KeyError ----
 
 def test_ecb_unknown_alias():
     with pytest.raises(KeyError, match="not in registry"):
-        _ecb_client().fetch("UNKNOWN_SERIES")
+        _ecb_client().fetch("UNKNOWN_SERIES", max_age_days=None)

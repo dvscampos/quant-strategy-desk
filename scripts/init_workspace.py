@@ -10,6 +10,10 @@ import shutil
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 REPO_ROOT = Path(__file__).parent.parent
 LOCAL = REPO_ROOT / "local"
 TEMPLATES = LOCAL / "templates"
@@ -84,12 +88,55 @@ def check_fred_key() -> None:
         print()
 
 
+def install_hook(hook_type: str = "pre-commit") -> None:
+    """Install sanitisation guard hook.
+
+    Args:
+        hook_type: Type of hook to install ("pre-commit" or "pre-push")
+    """
+    git_dir = REPO_ROOT / ".git"
+    if not git_dir.is_dir():
+        print(f"  Skipping {hook_type} hook install — no .git directory.")
+        return
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    source = REPO_ROOT / "scripts" / "hooks" / hook_type
+    target = hooks_dir / hook_type
+
+    if not source.exists():
+        print(f"  Skipping {hook_type} hook install — tracked hook missing.")
+        return
+
+    source.chmod(source.stat().st_mode | 0o111)
+    rel = os.path.relpath(source, hooks_dir)
+
+    if target.is_symlink() or target.exists():
+        try:
+            if target.resolve() == source.resolve():
+                return  # already ours — idempotent no-op
+        except OSError:
+            pass
+        print(f"  A {hook_type} hook already exists; NOT overwriting it.")
+        print(f"  To enable the sanitisation guard, run:  ln -sf {rel} {target}")
+        return
+
+    try:
+        target.symlink_to(rel)
+        print(f"  Installed {hook_type} sanitisation guard ({target.relative_to(REPO_ROOT)} -> {rel}).")
+    except OSError:
+        print(f"  Could not create symlink; to enable the guard run:  ln -sf {rel} {target}")
+
+
 def main() -> None:
     print("Initialising workspace...")
     create_dirs()
     copy_templates()
     ensure_env()
     check_fred_key()
+    install_hook("pre-commit")
+    install_hook("pre-push")
     print("Workspace ready.")
 
 

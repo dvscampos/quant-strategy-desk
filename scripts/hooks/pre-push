@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Git pre-push hook entry — delegates to the importable guard module.
+Installed into .git/hooks/pre-push by scripts/init_workspace.install_hook()."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sanitisation_guard import main_prepush
+
+if __name__ == "__main__":
+    sys.exit(main_prepush())

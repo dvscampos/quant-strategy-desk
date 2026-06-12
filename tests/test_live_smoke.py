@@ -46,7 +46,7 @@ def test_live_fetch_and_snapshot(tmp_path):
     for series_id, cfg in series_cfg.items():
         source = cfg["source"]
         provider = fred if source == "FRED" else ecb
-        obs = provider.fetch(series_id)
+        obs = provider.fetch(series_id, max_age_days=cfg["amber_age_days"])
         print(f"  {obs.source} {obs.series_id}: {obs.value} {obs.units} "
               f"(as_of={obs.as_of}, vintage={obs.vintage})")
         observations.append(obs)

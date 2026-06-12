@@ -122,7 +122,7 @@ Choose 5 agents from the roster. 6 when deploying into new instruments, crossing
 
 | Role | Purpose | Choose From |
 |---|---|---|
-| **Macro Strategist** | Sets the economic regime, identifies tailwinds/headwinds | Bridgewater Macro, AQR Factor Model, Man Group Portfolio* |
+| **Macro Strategist** | Sets the economic regime (macro-narrative) or duration positioning (yield-curve-regime), identifies tailwinds/headwinds | PIMCO Curve Strategist, AQR Factor Model, Man Group Portfolio* |
 | **Signal Generator** | Proposes alpha signals and data-driven opportunities | Citadel Alpha, Point72 ML, D.E. Shaw StatArb, AQR Factor Model*, Dimensional Factor Backtester |
 | **Strategy Architect** | Structures signals into implementable strategies with rules | GS Quant Architect, Jane Street MM, Man Group Portfolio* |
 | **Challenger** | Domain-specific challenge from outside the core team | Any agent not already on the Strike Team. Prioritise risk-adjacent agents (Man Group, Dimensional, Renaissance) when a second risk perspective is needed; Execution (Virtu, Millennium, Bloomberg) or Compliance (GS Compliance) when instrument/regulatory surface warrants it. |
@@ -394,6 +394,8 @@ Current Holdings (include in every Strike Team agent prompt):
 
 *The Signal Generator proposes signals relevant to the current regime. Before running, the orchestrator reads `local/HYPOTHESIS_LOG.md` and includes any open ideas in the Signal Generator's prompt for investigation.*
 
+*User hypotheses are investigated **alongside** the Signal Generator's own independent search, never in place of it. Report each with a Status (INVESTIGATED / DISMISSED / CARRIED FORWARD) and a one-line Finding on whether the data supported it — an idea may be found unsupported without forcing a trade. The orchestrator records the verdict and is free to dismiss a thinly-supported "confirm".*
+
 ### Top Investment Ideas
 
 | # | Ticker | Name | Price (€) | Signal Type | Thesis | Key Risk |
@@ -410,11 +412,13 @@ Current Holdings (include in every Strike Team agent prompt):
 
 ### Hypothesis Log Review
 
-> [!NOTE] Open hypotheses from `local/local/HYPOTHESIS_LOG.md` that the Signal Generator investigated this session.
+> [!NOTE] Open hypotheses from `local/HYPOTHESIS_LOG.md` that the Signal Generator investigated this session.
 
 | Hypothesis | Status | Finding |
 |---|---|---|
 | [From log] | INVESTIGATED / DISMISSED / CARRIED FORWARD | [1-line result] |
+
+> **Close-out:** then update `local/HYPOTHESIS_LOG.md` itself — in each Open Idea's "Last Reviewed" column, append `<YYYY-MM>:<STATUS>` for this session (an idea you didn't reach is `CARRIED FORWARD`). Append — never overwrite prior entries — and never move or delete ideas; the one-line finding lives here in the session file.
 
 ---
 
@@ -504,7 +508,7 @@ Entries here are aggregated to `local/AGENT_PERFORMANCE.md` after the session cl
 
 > [!WARNING] Home Bias — Do Not Replicate Home-Country Risk in Your Portfolio
 > Your personal real estate, banking relationships, income, and labour market are already concentrated in your home country. The portfolio should be the *diversifier* against that concentration.
-> **Check `local/local/INVESTOR_PROFILE.md` §Investment Constraints for home bias exclusions.** Apply them strictly.
+> **Check `local/INVESTOR_PROFILE.md` §Investment Constraints for home bias exclusions.** Apply them strictly.
 
 > [!NOTE] Stop-Loss Resolution
 > The [[docs/RISK_FRAMEWORK]] mandates -3% hard stops for all positions. Use the 2x ATR20 volatility stop as the working stop where it is wider. This is not a relaxation — it uses the framework's own volatility stop mechanism.
@@ -805,10 +809,10 @@ Entries here are aggregated to `local/AGENT_PERFORMANCE.md` after the session cl
 | Citadel Alpha | `agents/citadel_alpha.yml` | Alpha signal discovery, feature engineering | Signal | Data-driven signal construction |
 | Jane Street MM | `agents/jane_street_mm.yml` | Market making, spread capture, microstructure | Architect | Execution-aware strategy design |
 | AQR Factor Model | `agents/aqr_factor_model.yml` | Factor investing, multi-factor portfolios | Macro or Signal | Academic factor decomposition |
-| D.E. Shaw StatArb | `agents/de_shaw_statarb.yml` | Pairs trading, cointegration, stat arb | Signal | Statistical relationships, mean-reversion |
-| Bridgewater Macro | `agents/bridgewater_macro.yml` | Macro regimes, asset allocation, All-Weather | Macro | Growth/inflation regime framework |
+| D.E. Shaw StructArb | `agents/de_shaw_statarb.yml` | Share-class selection, cross-listed instrument, tracking-difference | Signal | Structural arbitrage for long-only |
+| PIMCO Curve Strategist | `agents/pimco_curve_strategist.yml` | Duration positioning, curve trades, bond-ETF allocation | Macro | Yield-curve regime framework |
 | Bloomberg Data Pipeline | `agents/bloomberg_data_pipeline.yml` | Data engineering, pipelines, feature stores | Challenger | Data quality, pipeline reliability |
-| Virtu Execution | `agents/virtu_execution.yml` | Execution algos, TWAP/VWAP, slippage | Challenger | Execution cost, slippage analysis |
+| Virtu Execution | `agents/virtu_execution.yml` | Retail order type, timing, commission drag, fractional shares | Challenger | Retail execution-quality analysis |
 | Point72 ML Alpha | `agents/point72_ml_alpha.yml` | ML-based signals, XGBoost, neural nets | Signal | ML-driven pattern detection |
 | Man Group Portfolio | `agents/man_group_portfolio.yml` | Portfolio optimisation, risk parity, HRP | Macro or Architect | Portfolio construction, trend-following |
 | Millennium Live Trading | `agents/millennium_live_trading.yml` | Live systems, broker APIs, kill switches | Challenger | Operational risk, system resilience |
@@ -854,6 +858,7 @@ When available, the following checkpoints would replace manual pre-population an
 - [ ] Handoff section below is complete
 - [ ] Session file passes the section checklist in `CLAUDE.md`
 - [ ] Any new `MEMORY.md` entries written for decisions that should persist across conversations
+- [ ] Every Open Idea in `local/HYPOTHESIS_LOG.md` has a "Last Reviewed" entry for this session.
 
 ---
 

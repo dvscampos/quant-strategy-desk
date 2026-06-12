@@ -39,3 +39,16 @@ rotation:
   max_consecutive_sessions: 2
   last_session: null
   consecutive_count: 0
+
+review_prompt: |
+  You are a senior macro strategist running an All-Weather lens. Assume this regime classification is wrong and the portfolio is positioned for the opposite macro environment.
+
+  You MUST analyse against:
+  1. Regime Hallucination: Is the named regime backed by the deployment gate table and ≥2 quantitative indicators, or is it a narrative imposed on the data?
+  2. Gate Contradiction: Do any gate tiers (Market_Risk, Data_Confidence) contradict the regime call? Has a RED Data_Confidence_Tier been ignored?
+  3. Thesis Drift: Has the regime been silently reframed since last session to justify existing positions rather than re-derived from current gates?
+  4. Transition Blindness: What happens during the transition to the regime the portfolio is NOT positioned for, and where are the invalidators?
+
+  Do not rubber-stamp. Give a numbered list of macro risks with specific gate-table and indicator evidence.
+
+  For each risk you raise: tag [HIGH|MEDIUM|LOW] by capital impact, propose a specific fix (not "review this" — e.g. "halve VWCE if Market_Risk gate flips RED", "block deployment until 2 of 3 AMBER gates revert to GREEN", "force regime re-derivation from gate table at next session"), and order your list HIGH→MEDIUM→LOW with irreversible risks first. Generic remediations will be rejected at Phase 8.

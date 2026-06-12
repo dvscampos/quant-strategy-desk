@@ -37,6 +37,7 @@ BASE           = Path(__file__).parent.parent
 PORTFOLIO_PATH = BASE / "local" / "PORTFOLIO.md"
 HOST           = "127.0.0.1"
 CLIENT_ID      = 10  # use a non-default ID to avoid conflicts with TWS UI
+BASE_CURRENCY  = "EUR"  # ledger denomination; a live P&L mark is priced only when the venue currency confirms EUR
 
 
 # ---------------------------------------------------------------------------
@@ -197,15 +198,15 @@ def _patch_holdings_row(text: str, ticker: str, date_str: str, fill: dict) -> st
         stripped = line.strip("|").split("|")
         cols = [c.strip() for c in stripped]
         if (
-            len(cols) >= 9
+            len(cols) >= 10
             and cols[0] == ticker
-            and "PENDING FILL" in cols[8]
+            and "PENDING FILL" in cols[9]
         ):
-            cols[2] = date_str
-            cols[3] = _fmt_shares(shares)
-            cols[4] = str(price)
-            cols[5] = f"€{all_in}"
-            cols[8] = "OPEN"
+            cols[3] = date_str
+            cols[4] = _fmt_shares(shares)
+            cols[5] = str(price)
+            cols[6] = f"€{all_in}"
+            cols[9] = "OPEN"
             line = "| " + " | ".join(cols) + " |"
         new_lines.append(line)
     return "\n".join(new_lines)
@@ -252,16 +253,18 @@ def _parse_open_holdings(text: str) -> list[dict]:
         if not (in_holdings and line.startswith("|") and "---" not in line):
             continue
         cols = [c.strip() for c in line.strip("|").split("|")]
-        if len(cols) < 9 or cols[0] in ("Ticker", "") or cols[8] != "OPEN":
+        # Holdings table is 10-column: ISIN at index 1, status at index 9.
+        if len(cols) < 10 or cols[0] in ("Ticker", "") or cols[9] != "OPEN":
             continue
         try:
-            qty   = float(cols[3])
-            price = float(cols[4])
-            cost  = float(cols[5].lstrip("€~").replace(",", ""))
+            qty   = float(cols[4])
+            price = float(cols[5])
+            cost  = float(cols[6].lstrip("€~").replace(",", ""))
         except ValueError:
             continue
         positions.append({
             "ticker":     cols[0],
+            "isin":       cols[1],
             "qty":        qty,
             "entry_price": price,
             "entry_cost": cost,
@@ -283,15 +286,44 @@ def _fetch_live_prices(positions: list[dict]) -> dict:
         return {}
     prices = {}
     for p in positions:
+        ticker = p["ticker"]
+        isin = p.get("isin", "").strip().upper()
+        # Bare-ticker collision guard (fail-safe backstop to the exchange-qualified-ticker
+        # contract): a non-US ISIN with an unqualified ticker can resolve to a same-symbol
+        # US fund on yfinance (e.g. bare "DFEN" = Direxion 3x USD, not the held VanEck
+        # Defense UCITS IE000YYE6WK5). Skip with a loud warning rather than mis-price.
+        if isin and not isin.startswith("US") and "." not in ticker:
+            print(f"  WARNING: skipping {ticker} (ISIN {isin}) — bare non-US ticker risks "
+                  f"a same-symbol US collision; qualify it (e.g. {ticker}.DE) in the ledger.")
+            continue
         try:
-            prices[p["ticker"]] = round(float(yf.Ticker(p["ticker"]).fast_info.last_price), 2)
+            fi = yf.Ticker(ticker).fast_info
+            native = float(fi.last_price)
+            ccy = getattr(fi, "currency", None)
+            # Currency-aware pricing (S-28, flag-only): _patch_summary subtracts a
+            # EUR-denominated entry_cost, so a live mark is only sound if it is itself in
+            # EUR. Price only when the venue currency CONFIRMS the base currency; flag-and-
+            # omit any non-base/unknown venue (skip-don't-misprice). FX conversion is deferred
+            # (it also needs currency-aware entry cost — see proposal 028 F4 / candidate S-32).
+            if isinstance(ccy, str) and ccy.strip().upper() == BASE_CURRENCY:
+                prices[ticker] = round(native, 2)
+            else:
+                shown = ccy if ccy else "unknown currency"
+                print(f"  WARNING: {ticker} priced in {shown} — P&L mark omitted "
+                      f"(non-{BASE_CURRENCY} pricing not yet supported).")
         except Exception:
             pass
     return prices
 
 
-def _patch_summary(text: str, positions: list[dict], total_nav: float, prices: dict) -> str:
-    """Rewrite the Portfolio Summary table with computed values."""
+def _patch_summary(text: str, positions: list[dict], total_nav: float, prices: dict) -> tuple[str, int, int]:
+    """Rewrite the Portfolio Summary table with computed values.
+
+    Patching is scoped to the '## Portfolio Summary' section only. Returns
+    (patched_text, n_missed, n_total) where n_total is the number of script-patched
+    label anchors and n_missed counts anchors that matched 0 times in-section. A
+    non-zero n_missed means the Summary section has drifted from the canonical labels.
+    """
     total_invested = sum(p["entry_cost"] for p in positions)
     cash           = round(total_nav - total_invested, 2)
     invested_pct   = round(total_invested / total_nav * 100, 1) if total_nav else 0.0
@@ -304,9 +336,13 @@ def _patch_summary(text: str, positions: list[dict], total_nav: float, prices: d
             round(prices[p["ticker"]] * p["qty"] - p["entry_cost"], 2)
             for p in positions if p["ticker"] in prices
         )
-        pnl_str = f"€{unrealised:+.2f}"
+        n_priced = sum(1 for p in positions if p["ticker"] in prices)
+        if n_priced < len(positions):
+            pnl_str = f"€{unrealised:+.2f} (partial: {n_priced}/{len(positions)} marks)"
+        else:
+            pnl_str = f"€{unrealised:+.2f}"
     else:
-        pnl_str = "n/a (yfinance unavailable)"
+        pnl_str = "n/a (no live marks — see warnings above)"
 
     # Equity exposure breakdown
     exposure_parts = [
@@ -315,35 +351,42 @@ def _patch_summary(text: str, positions: list[dict], total_nav: float, prices: d
     ]
     exposure_str = f"{invested_pct}% ({' + '.join(exposure_parts)})" if exposure_parts else "0%"
 
-    def _sub(pattern, value, t):
-        return re.sub(pattern, value, t, count=1)
+    # Script-patched anchors held as data so the count is derived, not hardcoded. Literal
+    # parens / percent are escaped so the label-prefix capture is group 1 for \g<1>.
+    anchors = [
+        (r"(\*\*Cash\*\*\s*\|\s*).*",                      rf"\g<1>€{cash:,.2f} ({cash_pct}%)"),
+        (r"(\*\*Invested \(MTM\)\*\*\s*\|\s*).*",          rf"\g<1>€{total_invested:,.2f} ({invested_pct}%)"),
+        (r"(\*\*Unrealised P&L\*\*\s*\|\s*).*",            rf"\g<1>{pnl_str}"),
+        (r"(\*\*Number of open positions\*\*\s*\|\s*).*",  rf"\g<1>{n_open}"),
+        (r"(\*\*Equity exposure \(% NAV\)\*\*\s*\|\s*).*", rf"\g<1>{exposure_str}"),
+    ]
+    n_total = len(anchors)
 
-    text = _sub(
-        r"(\*\*Cash \(post-fill\)\*\*\s*\|\s*).*",
-        rf"\g<1>€{cash:,.2f} ({cash_pct}%)",
-        text,
-    )
-    text = _sub(
-        r"(\*\*Invested \(post-fill\)\*\*\s*\|\s*).*",
-        rf"\g<1>€{total_invested:,.2f} ({invested_pct}%)",
-        text,
-    )
-    text = _sub(
-        r"(\*\*Unrealised P&L\*\*\s*\|\s*).*",
-        rf"\g<1>{pnl_str}",
-        text,
-    )
-    text = _sub(
-        r"(\*\*Number of open positions\*\*\s*\|\s*).*",
-        rf"\g<1>{n_open}",
-        text,
-    )
-    text = _sub(
-        r"(\*\*Equity exposure[^|]*\*\*\s*\|\s*).*",
-        rf"\g<1>{exposure_str}",
-        text,
-    )
-    return text
+    # Locate the '## Portfolio Summary' section (header -> next '## ' or EOF). Precise
+    # header match (not startswith) so a '## Portfolio Summary Notes' sibling cannot collide.
+    lines = text.split("\n")
+    start = None
+    for i, line in enumerate(lines):
+        if re.match(r"##\s+Portfolio Summary\s*(\(.*\))?\s*$", line):
+            start = i
+            break
+    if start is None:
+        return text, n_total, n_total  # no Summary section -> all anchors missed (full no-op)
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+
+    section = "\n".join(lines[start:end])
+    n_missed = 0
+    for pattern, repl in anchors:
+        section, n = re.subn(pattern, repl, section, count=1)
+        if n == 0:
+            n_missed += 1
+
+    patched = "\n".join(lines[:start] + [section] + lines[end:])
+    return patched, n_missed, n_total
 
 
 def update_portfolio(fills: dict, target_date: date) -> tuple[int, list[str]]:
@@ -373,8 +416,24 @@ def update_portfolio(fills: dict, target_date: date) -> tuple[int, list[str]]:
     if positions and total_nav:
         print("Fetching live prices for P&L...")
         prices = _fetch_live_prices(positions)
-        text   = _patch_summary(text, positions, total_nav, prices)
-        print(f"  Portfolio Summary updated (NAV €{total_nav:,.2f}, "
+        text, n_missed, n_total = _patch_summary(text, positions, total_nav, prices)
+        n_matched = n_total - n_missed
+        if n_missed == 0:
+            summary_state = f"updated ({n_matched}/{n_total} labels)"
+        elif n_missed < n_total:
+            warnings.append(
+                f"Summary partially updated — {n_matched}/{n_total} script-patched labels "
+                f"matched; {n_missed} label(s) missing from the Portfolio Summary section "
+                f"(check for label drift)"
+            )
+            summary_state = f"partially updated ({n_matched}/{n_total} labels)"
+        else:
+            warnings.append(
+                f"Summary not updated — 0/{n_total} script-patched labels matched in the "
+                f"Portfolio Summary section (template/ledger label drift)"
+            )
+            summary_state = "not updated (label drift)"
+        print(f"  Portfolio Summary {summary_state} (NAV €{total_nav:,.2f}, "
               f"{len(positions)} open position(s))")
     else:
         print("  Skipping Portfolio Summary — no open positions or NAV not found.")

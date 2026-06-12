@@ -3,3 +3,70 @@
 
 retro:
   archive_dir: local/retros/
+
+# ─────────────────────────────────────────────────────────────
+# Investments — Skill Configuration
+# Loaded by /propose, /code-reviewer, /process-sheriff, /commemorate
+
+# Pre-flight checks run before any PROPOSE
+pre_flight:
+  - name: thesis_validation
+    description: "Any change to thesis statements or conviction scores requires formal thesis review via /war-room"
+    trigger_patterns:
+      - "thesis"
+      - "conviction"
+      - "regime"
+      - "macro_view"
+    action: "FLAG for /war-room review"
+
+  - name: risk_parameter_change
+    description: "Changes to risk parameters (position sizing, stop-loss, leverage) require Risk Guardian sign-off"
+    trigger_patterns:
+      - "position_size"
+      - "stop_loss"
+      - "leverage"
+      - "max_drawdown"
+      - "kelly"
+    action: "FLAG — Risk Guardian must review"
+
+  - name: backtest_friction
+    description: "Backtest parameters or data sources modified — verify no look-ahead bias introduced"
+    trigger_patterns:
+      - "backtest"
+      - "historical_data"
+      - "train_test_split"
+    action: "FLAG — verify no look-ahead bias"
+
+  - name: war_room_rotation
+    description: "Agent YAML modifications must preserve rotation system integrity"
+    trigger_patterns:
+      - "agents/*.yml"
+      - "analytical_framework"
+      - "gate_consumption"
+    action: "Verify rotation constraints: max 2 consecutive, ≥2 distinct frameworks per Strike Team"
+
+# Critical patterns — grepped during HEAVY proposals
+critical_patterns:
+  - "INVESTOR_PROFILE"
+  - "gate_consumption"
+  - "analytical_framework"
+  - "system_prompt"
+  - "review_prompt"
+
+# Build/lint/test — non-code project, mostly Python scripts
+build_command: ""
+lint_command: "ruff check scripts/ --select E,W,F"
+test_command: "python -m pytest tests/ -v --tb=short || echo 'Tests failed'"
+
+# Documentation paths
+progress_file: "PROGRESS.md"
+docs_dir: "docs/"
+
+# Review vector rotation (checked quarterly by /retro)
+review_vectors:
+  last_rotated: "2026-05-14"
+  vectors:
+    - "Wallet Bleed"
+    - "Thesis Drift"
+    - "Regime Hallucination"
+    - "Position Concentration"

@@ -1,0 +1,23 @@
+# Sanitisation guard allowlist — accepted-PUBLIC identifiers permitted in tracked files.
+# Parsed-canonical (yaml.safe_load); the hash is over parsed content, never raw bytes.
+# DUAL-USE WARNING: adding a value here that is ALSO a genuinely-private literal silently
+# disables detection of that value. Add only operator-accepted public identifiers.
+allow:
+  isins:
+    - IE000YYE6WK5      # operator-accepted public (2026-06-04)
+  tickers:
+    - DFEN.DE           # operator-accepted public (2026-06-04)
+    - DFNS.PA           # item-4 source-driven triage: public/eval ticker (2026-06-11, Proposal 029)
+    - VWCE.DE           # item-4 source-driven triage: public/eval ticker (2026-06-11, Proposal 029)
+  values:
+    - "2000"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "2008"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "2020"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "2022"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "2025"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "2026"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "7496"            # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "16.05"           # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "17.26"           # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "1.1628"          # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)
+    - "1.1649"          # item-4 source-driven triage: public-macro / framework-coincidental / public-constant (2026-06-11, Proposal 029)

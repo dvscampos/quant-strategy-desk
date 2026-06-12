@@ -78,7 +78,7 @@ cp = {
     "nav_eur": 0,                    # replace with actual NAV
     "prices": {},                    # dict of ticker → price (macro assets only; candidate tickers fetched in phase_2_5)
     "gates": {},                     # dict of gate → GREEN/AMBER/RED
-    "strike_team": [],               # list of agent names with framework field, e.g. [{"name": "Bridgewater", "framework": "macro-narrative"}]
+    "strike_team": [],               # list of agent names with framework field, e.g. [{"name": "PIMCO Curve Strategist", "framework": "yield-curve-regime"}]
     # NOTE: carry_forward_brief is Orchestrator-only context — do NOT save here or reload into Strike Team prompts
 }
 cp_path = pathlib.Path("local/brainstorms/.checkpoint-YYYY-MM.json")  # adjust for backtest path
@@ -206,7 +206,7 @@ Read the appropriate rotation log (see **Path Convention** below). Identify:
 - Agents who have NEVER served on Strike Team (prioritise for Challenger slot)
 - Proposed Strike Team with rationale
 
-**Framework diversity rule**: The Strike Team must include at least 2 distinct `analytical_framework` values from the agent YAMLs (macro-narrative / quantitative / fundamental / behavioural / flow-based). If the proposed team is all-quantitative, swap one for a macro-narrative or fundamental agent. Record the framework breakdown in the Rotation Check table.
+**Framework diversity rule**: The Strike Team must include at least 2 distinct `analytical_framework` values from the agent YAMLs (macro-narrative / quantitative / yield-curve-regime / structural / fundamental / behavioural / flow-based). If the proposed team is all-quantitative, swap one for a macro-narrative, yield-curve-regime, or structural agent. Record the framework breakdown in the Rotation Check table.
 
 ### E. Carry-Forward Context (Orchestrator only)
 Read the previous session's "Handoff to Next Session" section. **This context is for the Orchestrator's synthesis stage only.** Do NOT inject it into individual Strike Team sub-agent prompts — the Strike Team must form independent views from market data and portfolio state, not inherit last session's regime call, signals, or framing.
@@ -277,13 +277,25 @@ Follow the full War Room template at `brainstorms/_TEMPLATE.md`:
 - Phase 1: Portfolio Review
 - Phase 2: Macro Context (Sonnet sub-agent)
 - Phase 3: **Counter-Regime Analysis** (Sonnet sub-agent — MANDATORY, see below)
-- Phase 4: Signal & Opportunity (Sonnet sub-agent)
+- Phase 4: Signal & Opportunity (Sonnet sub-agent) — see the template's Phase 4 step for the `local/HYPOTHESIS_LOG.md` open-ideas input.
 - Phase 5: Instrument Verification (runs here, post-Signal-Generator)
 - Phase 6: Strategy Architecture (Sonnet sub-agent)
 - Phase 7: Risk Stress Test (Sonnet sub-agent)
 - Phase 8: Challenger Review (Sonnet sub-agent)
 - Orchestrator synthesis and conflict resolution
 - Phase 9: Full Desk Sign-Off (15 Haiku sub-agents)
+
+### Prompt Selection by Phase
+
+When invoking Strike Team agents via Task tool, use the appropriate prompt field:
+
+| War Room Phase | Prompt Field | Purpose |
+|---|---|---|
+| Phase 3 (Review) | `review_prompt` | Adversarial review of proposals/theses |
+| Phase 5 (Generate) | `system_prompt` | Generative tasks (thesis drafting, system design) |
+| Phase 6 (Challenge) | `review_prompt` | Counter-regime adversarial challenge |
+
+If an agent's YAML does not contain a `review_prompt` field, fall back to `system_prompt` with the generic adversarial instruction: "You are an adversarial reviewer. Do not rubber-stamp."
 
 ### Counter-Regime Analysis (Phase 3 — MANDATORY)
 Launch a second Sonnet sub-agent in **parallel** with the Macro agent. Both receive identical market data and portfolio state. The Counter-Regime agent's prompt MUST explicitly instruct:
@@ -356,8 +368,9 @@ After the session is complete, verify all of the following:
 | Price affordability filter applied? | Check Signal Generator prompt for max price | |
 | Pre-session live log written and unchanged after synthesis? | Compare `local/brainstorms/YYYY-MM.pre-session.md` timestamps | |
 | Candidate tickers verified via Phase 5 (post-Signal-Generator) with retry protocol if any failed? | Check session file's Phase 5 section | |
+| Hypothesis log updated? | Every Open Idea has a "Last Reviewed" entry for this session | |
 
-Report the compliance score (e.g., 9/9) and flag any failures.
+Report the compliance score (e.g., N of N checks) and flag any failures.
 
 ### 3a. Post-Session Updates
 Update the files matching the session type (see **Path Convention** above):

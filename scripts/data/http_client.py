@@ -13,12 +13,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional
 
 import requests
+
+log = logging.getLogger(__name__)
+_SECONDS_PER_DAY = 86400
 
 
 class HttpError(RuntimeError):
@@ -46,6 +50,12 @@ class HttpClient:
         digest = hashlib.sha256(key).hexdigest()
         return self.cache_dir / f"{digest}.json"
 
+    def _cache_fresh(self, cache_path: Path, max_age_days: Optional[float]) -> bool:
+        if max_age_days is None:
+            return True   # generic-client semantics: no TTL declared → never expires.
+        age_seconds = time.time() - cache_path.stat().st_mtime
+        return age_seconds < max_age_days * _SECONDS_PER_DAY
+
     def _respect_rate_limit(self) -> None:
         if self.min_interval <= 0:
             return
@@ -60,9 +70,11 @@ class HttpClient:
         params: Optional[Mapping] = None,
         headers: Optional[Mapping] = None,
         use_cache: bool = True,
+        max_age_days: Optional[float] = None,
     ) -> str:
         cache_path = self._cache_path("GET", url, params)
-        if use_cache and not self.skip_cache and cache_path.exists():
+        cache_available = use_cache and not self.skip_cache and cache_path.exists()
+        if cache_available and self._cache_fresh(cache_path, max_age_days):
             return cache_path.read_text(encoding="utf-8")
 
         last_exc: Optional[Exception] = None
@@ -83,11 +95,12 @@ class HttpClient:
             if resp.status_code == 429:
                 retry_after = float(resp.headers.get("Retry-After", 0))
                 if retry_after > self.max_retry_after:
-                    # L19: cap exceeded — abort immediately, do not retry.
-                    raise HttpError(
+                    # L19 (rev L5): cap exceeded — stop retrying; fall through to DDP fallback decision.
+                    last_exc = HttpError(
                         f"HTTP 429 from {url}: Retry-After={retry_after:.0f}s exceeds "
-                        f"cap={self.max_retry_after:.0f}s — aborting, trigger DDP fallback"
+                        f"cap={self.max_retry_after:.0f}s"
                     )
+                    break
                 time.sleep(retry_after or self.backoff_base ** attempt)
                 continue
             if resp.status_code >= 500:
@@ -110,4 +123,9 @@ class HttpClient:
                 self.cache_dir.mkdir(parents=True, exist_ok=True)
                 cache_path.write_text(body, encoding="utf-8")
             return body
+        if cache_available:
+            # DDP step-2 (docs/RISK_FRAMEWORK.md:286): over-age cache survives as the tagged-STALE fallback.
+            log.warning("GET %s failed (%s); serving over-age cache as DDP STALE fallback", url, last_exc)
+            return cache_path.read_text(encoding="utf-8")
+        # {last_exc} MUST be interpolated — test_fred_429_exceeds_cap matches the inner Retry-After substring.
         raise HttpError(f"GET {url} failed after {self.max_retries} attempts: {last_exc}")
