@@ -44,7 +44,7 @@
 | 026 | S-23 ISIN-anchored pricing — bare-ticker guard + portable identity contract (S-21 `--snapshot` split out) | DONE | Daniel | 2026-06-04 | 2026-06-04  |
 | 027 | S-30 Mechanical pre-commit sanitisation guard — blocks private-literal leaks into tracked diffs; cloner-portable | DONE | Daniel | 2026-06-04 | 2026-06-09  |
 | 028 | Reconcile Summary canonical contract (S-27) + currency-aware pricing (S-28) | DONE | Daniel | 2026-06-10 | 2026-06-10  |
-| 029 | Pre-push sanitisation remediation — scrub 24 range-diff collisions + squash-clean + local archive + pre-push hook | APPROVED | Daniel | 2026-06-10 | 2026-06-11  |
+| 029 | Pre-push sanitisation remediation — scrub range-diff collisions (20 net-tree = 18 real + 2 synthetic self-FP: 3 SCRUB / 13 ALLOWLIST / 4 CLEAN-LOG) + squash-clean + local archive + pre-push hook | DONE | Daniel | 2026-06-10 | 2026-06-13 |
 
 ## When to write a proposal
 
