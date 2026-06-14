@@ -14,8 +14,11 @@ import pytest
 import yaml
 
 from scripts.hooks.sanitisation_guard import (
+    GitInvocationError,
+    LedgerReadError,
     _canonical,
     _group,
+    _is_process_noise,
     _is_specific,
     _sig_figs,
     canonical_config_hash,
@@ -554,3 +557,341 @@ def test_install_hook_foreign_pre_push_not_overwritten(tmp_path, capsys):
         assert "A pre-push hook already exists; NOT overwriting it" in captured.out
     finally:
         siw.REPO_ROOT = original_repo_root
+
+
+# =====================================================================================
+# S-31 — precision (ITEM 1) + fail-closed (ITEM 2) + corpus (ITEM 4). Synthetic only.
+# CARDINAL: every narrowing is PAIRED with a real-leak-STILL-blocks assertion.
+# =====================================================================================
+
+_NO_ALLOW = {"isins": set(), "tickers": set(), "values": set()}
+
+
+def _git_init(repo):
+    """Initialise a synthetic git repo (no origin)."""
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@t.t"], cwd=repo, check=True, capture_output=True)
+
+
+# --- ITEM 1: ticker-only alpha boundary (a1) + paired detection-intact -------------
+
+def test_ticker_alpha_boundary_fp_fixed_and_delimited_still_blocks():
+    """(a1) A ticker glued to trailing letters with NO separator no longer blocks
+    (named residual); EVERY delimited shape (the realistic leak shape) STILL blocks."""
+    rec = {"kind": "ticker", "key": "FAKE.XX", "patterns": {"FAKE.XX"}, "source": "local/PORTFOLIO.md"}
+    # FP fixed — glued-no-separator passes
+    assert find_leaks([rec], "ticker FAKE.XXY here", _NO_ALLOW) == []
+    assert find_leaks([rec], "FAKE.XXDEUTSCHE", _NO_ALLOW) == []
+    # Detection intact — all delimited shapes block
+    for txt in ["FAKE.XX listed", "|FAKE.XX|", "/FAKE.XX/", "see FAKE.XX.", "FAKE.XX"]:
+        assert len(find_leaks([rec], txt, _NO_ALLOW)) == 1, txt
+
+
+def test_isin_path_digit_only_unchanged_overblocks_never_underblocks():
+    """(a1-isin) ISIN stays on the digit-only matcher: a glued-alpha ISIN STILL blocks
+    (over-block, the cardinal-safe direction); standalone STILL blocks."""
+    rec = {"kind": "ISIN", "key": "XX0000FAKE01", "patterns": {"XX0000FAKE01"}, "source": "local/PORTFOLIO.md"}
+    assert len(find_leaks([rec], "XX0000FAKE01Notes", _NO_ALLOW)) == 1  # glued alpha → still blocks
+    assert len(find_leaks([rec], "ref XX0000FAKE01 here", _NO_ALLOW)) == 1  # standalone
+
+
+def test_numeric_glued_to_letters_still_blocks():
+    """(a2) The numeric path is UNCHANGED — a value glued to a currency code (the
+    highest-stakes leak class) STILL blocks."""
+    rec = {"kind": "numeric value", "key": "5142", "patterns": render_variants("5142"), "source": "local/PORTFOLIO.md"}
+    assert len(find_leaks([rec], "nav 5142EUR today", _NO_ALLOW)) == 1
+
+
+def test_isin_match_unaffected_by_date_skip():
+    """(f) An ISIN match adjacent to an ISO date still blocks (an ISIN is longer than any
+    ISO-date span so the date-skip cannot contain it). Numeric path untouched."""
+    rec = {"kind": "ISIN", "key": "XX0000FAKE01", "patterns": {"XX0000FAKE01"}, "source": "local/PORTFOLIO.md"}
+    assert len(find_leaks([rec], "on 2026-06-09 the ISIN XX0000FAKE01 appeared", _NO_ALLOW)) == 1
+
+
+# --- ITEM 4: corpus exclusion + no-swallow + tracked-path invariant ----------------
+
+def test_corpus_excludes_process_noise_keeps_retained(tmp_path, monkeypatch):
+    """(a3/routing, harvest side) A value in a RETAINED source is harvested; a value
+    living ONLY in an EXCLUDED process-noise file is NOT harvested."""
+    local_dir = tmp_path / "local"
+    (local_dir / "brainstorms").mkdir(parents=True)
+    (local_dir / "SESSIONS.md").write_text("nav 8473.55 recorded\n")  # retained
+    (local_dir / "brainstorms" / "2026-07.steering-foo.md").write_text("meta 9261.44\n")  # future steering → excluded
+    (local_dir / "brainstorms" / "INDEX.md").write_text("idx 7531.22\n")  # excluded
+    (local_dir / "brainstorms" / "x_draft.md").write_text("draft 6420.11\n")  # excluded
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    keys = {r["key"] for r in extract_private_literals(local_dir)}
+    assert "8473.55" in keys
+    assert "9261.44" not in keys
+    assert "7531.22" not in keys
+    assert "6420.11" not in keys
+
+
+def test_process_noise_does_not_swallow_retained_sources():
+    """No-swallow guard: _is_process_noise excludes every NOISE file and NO retained source."""
+    base = Path("local")
+    retained = [
+        "AGENT_PERFORMANCE.md", "HYPOTHESIS_LOG.md", "INVESTOR_PROFILE.md", "PORTFOLIO.md",
+        "ROTATION_LOG.md", "SESSIONS.md", "brainstorms/2026-03.md", "brainstorms/2026-04.md",
+        "brainstorms/2026-05.md", "brainstorms/2026-04.pre-session.md",
+        "brainstorms/2026-05.pre-session.md", "retros/2026-04-24.md",
+    ]
+    for n in retained:
+        assert _is_process_noise(base / n) is False, n
+    noise = [
+        "brainstorms/INDEX.md", "brainstorms/2026-05.issues-scratch.md",
+        "brainstorms/2026-06.steering-data-layer.md",
+        "brainstorms/2026-06.steering-tooling-remainder.md",
+        "brainstorms/_phase4_working_prompt_draft.md",
+    ]
+    for n in noise:
+        assert _is_process_noise(base / n) is True, n
+
+
+def test_templates_not_harvested(tmp_path, monkeypatch):
+    """(e) Tracked-path invariant: a templates/* file (tracked) is NOT harvested."""
+    local_dir = tmp_path / "local"
+    (local_dir / "templates").mkdir(parents=True)
+    tfile = local_dir / "templates" / "PORTFOLIO.template.md"
+    tfile.write_text("template value 8473.55\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    monkeypatch.setattr(
+        "scripts.hooks.sanitisation_guard._tracked_paths", lambda d: {tfile.resolve()}
+    )
+    keys = {r["key"] for r in extract_private_literals(local_dir)}
+    assert "8473.55" not in keys
+
+
+def test_corpus_routing_production_blocks_retained_passes_excluded(tmp_path, monkeypatch, capsys):
+    """(b-routing, production) Through main_prepush: a value committed that lives in a
+    RETAINED source BLOCKS; a value that lives ONLY in an EXCLUDED file PASSES."""
+    local_dir = tmp_path / "local"
+    (local_dir / "brainstorms").mkdir(parents=True)
+    (local_dir / "SESSIONS.md").write_text("nav 8473.55\n")  # retained → V1 harvested
+    (local_dir / "brainstorms" / "2026-07.steering-foo.md").write_text("meta 9261.44\n")  # excluded → V2 not harvested
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_init(repo)
+    f = repo / "doc.md"
+    f.write_text("init\n")
+    subprocess.run(["git", "add", "doc.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", repo)
+
+    def run_prepush():
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+        stdin = f"refs/heads/main {sha} refs/heads/main {'0'*40}\n"
+        monkeypatch.setattr("sys.stdin", subprocess.io.TextIOWrapper(subprocess.io.BytesIO(stdin.encode())))
+        return main_prepush()
+
+    # Commit the EXCLUDED-only value → PASSES (not harvested)
+    f.write_text("init\nseen 9261.44\n")
+    subprocess.run(["git", "add", "doc.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "excluded value"], cwd=repo, check=True, capture_output=True)
+    assert run_prepush() == 0
+
+    # Commit the RETAINED value → BLOCKS
+    f.write_text("init\nseen 9261.44\nleak 8473.55\n")
+    subprocess.run(["git", "add", "doc.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "retained value"], cwd=repo, check=True, capture_output=True)
+    assert run_prepush() == 1
+    assert "PUSH BLOCKED" in capsys.readouterr().err
+
+
+# --- ITEM 2: fail-closed (git error) + empty-but-valid passes ----------------------
+
+def test_main_fails_closed_on_git_error(tmp_path, monkeypatch, capsys):
+    """(c) main() with a non-git REPO_ROOT → staged_added_text raises → clean BLOCK."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("| ISIN |\n| ZZ9999TEST99 |\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    non_git = tmp_path / "nongit"
+    non_git.mkdir()
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", non_git)
+    assert main() == 1
+    err = capsys.readouterr().err
+    assert "COMMIT BLOCKED" in err and "failing CLOSED" in err
+
+
+def test_main_passes_clean_empty_diff(tmp_path, monkeypatch):
+    """(c) main() with a valid git repo + EMPTY staged diff + records present → PASSES
+    (empty-but-valid is NOT an error — the guard must not block its own clean commit)."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("| ISIN |\n| ZZ9999TEST99 |\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_init(repo)
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", repo)
+    assert main() == 0
+
+
+def test_staged_added_text_raises_on_git_error(tmp_path, monkeypatch):
+    """staged_added_text raises GitInvocationError (not returns "") on a git error."""
+    non_git = tmp_path / "nongit"
+    non_git.mkdir()
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", non_git)
+    with pytest.raises(GitInvocationError):
+        staged_added_text()
+
+
+def test_range_added_text_raises_on_git_error(tmp_path, monkeypatch):
+    """range_added_text raises GitInvocationError on a git error."""
+    non_git = tmp_path / "nongit"
+    non_git.mkdir()
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", non_git)
+    with pytest.raises(GitInvocationError):
+        range_added_text("HEAD~1..HEAD")
+
+
+def _prepush_with_stdin(repo, monkeypatch, stdin_data):
+    monkeypatch.setattr("sys.stdin", subprocess.io.TextIOWrapper(subprocess.io.BytesIO(stdin_data.encode())))
+    return main_prepush()
+
+
+def test_main_prepush_fails_closed_on_malformed_stdin(tmp_path, monkeypatch, capsys):
+    """(c) A malformed pre-push line (not 4 fields) → fail CLOSED."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("| ISIN |\n| ZZ9999TEST99 |\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_init(repo)
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", repo)
+    assert _prepush_with_stdin(repo, monkeypatch, "refs/heads/main abc123\n") == 1
+    assert "PUSH BLOCKED" in capsys.readouterr().err
+
+
+def test_main_prepush_passes_delete_only(tmp_path, monkeypatch):
+    """(c) A branch-delete line (local_sha all zeros) → legitimate PASS (not malformed)."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("| ISIN |\n| ZZ9999TEST99 |\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_init(repo)
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", repo)
+    stdin = f"refs/heads/main {'0'*40} refs/heads/main {'a'*40}\n"
+    assert _prepush_with_stdin(repo, monkeypatch, stdin) == 0
+
+
+def test_main_prepush_fails_closed_no_origin_no_stdin(tmp_path, monkeypatch, capsys):
+    """(c) Empty stdin + no origin/main → cannot establish a range → fail CLOSED."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("| ISIN |\n| ZZ9999TEST99 |\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_init(repo)
+    f = repo / "doc.md"
+    f.write_text("x\n")
+    subprocess.run(["git", "add", "doc.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", repo)
+    assert _prepush_with_stdin(repo, monkeypatch, "") == 1
+    assert "PUSH BLOCKED" in capsys.readouterr().err
+
+
+def test_main_prepush_fails_closed_on_git_show_error(tmp_path, monkeypatch, capsys):
+    """(c) A git-show error on a commit → fail CLOSED (skipping is fail-open per commit)."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("| ISIN |\n| ZZ9999TEST99 |\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_init(repo)
+    f = repo / "doc.md"
+    f.write_text("x\n")
+    subprocess.run(["git", "add", "doc.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    f.write_text("x\ny\n")
+    subprocess.run(["git", "add", "doc.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "second"], cwd=repo, check=True, capture_output=True)
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+
+    import scripts.hooks.sanitisation_guard as sg
+    monkeypatch.setattr(sg, "REPO_ROOT", repo)
+    orig_run = subprocess.run
+
+    def fake_run(cmd, *a, **k):
+        if isinstance(cmd, list) and "show" in cmd:
+            raise subprocess.CalledProcessError(1, cmd)
+        return orig_run(cmd, *a, **k)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    stdin = f"refs/heads/main {sha} refs/heads/main {'0'*40}\n"
+    assert _prepush_with_stdin(repo, monkeypatch, stdin) == 1
+    assert "PUSH BLOCKED" in capsys.readouterr().err
+
+
+# --- ITEM 2 (L3 fold-in): ledger-read fail-closed + latin-1 fallback ---------------
+
+def test_extract_fails_closed_on_ledger_oserror(tmp_path, monkeypatch):
+    """(c-read) An OSError reading a local/ file → LedgerReadError (fail CLOSED)."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("ZZ9999TEST99\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    import pathlib
+    orig = pathlib.Path.read_text
+
+    def boom(self, *a, **k):
+        if self.name == "PORTFOLIO.md":
+            raise OSError("simulated unreadable")
+        return orig(self, *a, **k)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", boom)
+    with pytest.raises(LedgerReadError):
+        extract_private_literals(local_dir)
+
+
+def test_main_fails_closed_on_ledger_oserror(tmp_path, monkeypatch, capsys):
+    """(c-read) main() blocks cleanly on a LedgerReadError (not an uncaught traceback)."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "PORTFOLIO.md").write_text("ZZ9999TEST99\n")
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    import pathlib
+    orig = pathlib.Path.read_text
+
+    def boom(self, *a, **k):
+        if self.name == "PORTFOLIO.md":
+            raise OSError("simulated")
+        return orig(self, *a, **k)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", boom)
+    assert main() == 1
+    err = capsys.readouterr().err
+    assert "COMMIT BLOCKED" in err and "failing CLOSED" in err
+
+
+def test_latin1_fallback_still_harvests_non_utf8_ledger(tmp_path, monkeypatch, capsys):
+    """(c-read) A non-UTF-8 ledger is best-effort latin-1 decoded — its ASCII-shaped
+    value is STILL harvested (no under-block) + a loud warning (no DoS)."""
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    # Latin-1 bytes (ç, é) make this invalid UTF-8; the ASCII value survives latin-1.
+    (local_dir / "PORTFOLIO.md").write_bytes("preço 8473.55 \xe9\n".encode("latin-1"))
+    monkeypatch.setenv("SANITISATION_LOCAL_DIR", str(local_dir))
+    keys = {r["key"] for r in extract_private_literals(local_dir)}
+    assert "8473.55" in keys  # detection preserved despite non-UTF-8
+    assert "not UTF-8" in capsys.readouterr().err  # loud, non-silent

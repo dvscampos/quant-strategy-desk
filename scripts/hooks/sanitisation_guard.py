@@ -16,7 +16,11 @@ EU-locale representation variants). NOT covered (named, bounded residuals):
 free-text PII, .env secrets, values living only in a generated .html, space-
 separated or scientific-notation numbers, sub-floor (<=3-digit) integers, and
 low-information <=2-significant-figure decimals (e.g. a 1.3 share price).
-The guard is a mechanical SAFETY NET that fails CLOSED, not a perfect redactor.
+The guard is a mechanical SAFETY NET that fails CLOSED, not a perfect redactor. A git
+error or an unreadable local/ file fails CLOSED (block); a legitimately empty/delete-only
+diff still PASSES. Process/meta noise (steering logs, scratch, INDEX, *_draft) is excluded
+from the harvest corpus by convention-glob. Ticker matching uses an alpha-aware boundary;
+ISIN and numeric matching keep the digit-only lookaround (high-value, over-block-safe).
 
 Declared fail-closed bounded residuals: space-separated numbers, scientific
 notation, values in .html files only, sub-floor (<=3-digit) integers,
@@ -45,6 +49,39 @@ ISIN_RE = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b")
 TICKER_RE = re.compile(r"\b[A-Z]{2,6}\.[A-Z]{1,3}\b")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}-\d{2}")
 NUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
+
+# Process/meta artefacts excluded from the harvest corpus (non-ledger by construction;
+# their meta-numbers self-poison the guard). Convention-glob (NOT an enumerated list) so a
+# FUTURE process log (e.g. a 2026-07 steering file) is auto-excluded — closing the
+# self-poisoning root cause. Anchored to unambiguous infixes; a no-swallow test guards
+# against eating a real ledger source.
+_PROCESS_LOG_INFIXES = (".steering-", ".issues-scratch")
+
+
+class GitInvocationError(Exception):
+    """A git subprocess failed. Callers MUST fail CLOSED (block) — distinguished from a
+    legitimately empty diff (which returns "" and PASSES)."""
+
+
+class LedgerReadError(Exception):
+    """A local/ private file could not be read (OSError). Callers MUST fail CLOSED so a
+    file's leak protection cannot silently drop."""
+
+
+def _is_process_noise(path: Path) -> bool:
+    """True for process/meta artefacts that must be excluded from the harvest corpus.
+
+    Convention-glob over `path.name`/`path.stem` (path-agnostic — rooted wherever the
+    caller passes `local_dir`). Matches: `INDEX.md`, any stem containing `_draft`, or any
+    name carrying a `_PROCESS_LOG_INFIXES` infix. Deliberately does NOT match a bare
+    leading underscore (too broad — would swallow a future `local/_scratch_portfolio.md`).
+    """
+    name = path.name
+    if name == "INDEX.md":
+        return True
+    if "_draft" in path.stem:
+        return True
+    return any(infix in name for infix in _PROCESS_LOG_INFIXES)
 
 
 def _local_dir() -> Path:
@@ -158,7 +195,10 @@ def extract_private_literals(local_dir: Path) -> list[dict]:
       {"kind": "ISIN"|"ticker"|"numeric value", "key": <canonical/exact>,
        "patterns": set[str], "source": <relpath str>}
 
-    Skips tracked files and non-.md files.
+    Skips tracked files, non-.md files, and process/meta noise (_is_process_noise).
+    A non-UTF-8 file is best-effort latin-1 decoded (detection preserved) with a loud
+    warning; a genuine OSError raises LedgerReadError (fail CLOSED — protection must not
+    silently drop).
     """
     if not local_dir.is_dir():
         return []
@@ -171,18 +211,40 @@ def extract_private_literals(local_dir: Path) -> list[dict]:
             continue
         if path.resolve() in tracked:
             continue
-
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        # Exclude process/meta noise BEFORE the read so an unreadable excluded file
+        # can never trigger a (fail-closed) read error.
+        if _is_process_noise(path):
             continue
 
-        # Compute source path — relative to REPO_ROOT if possible, else relative to local_dir
+        # Compute source path BEFORE the read so it is defined in the read-error branches.
         try:
             source = str(path.relative_to(REPO_ROOT))
         except ValueError:
             # In tests, tmp_path is not under REPO_ROOT
             source = str(path.relative_to(local_dir.parent))
+
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # A non-UTF-8 file (e.g. a Latin-1 broker-statement paste). Best-effort
+            # latin-1 re-read NEVER raises and preserves all ASCII content (ISINs,
+            # tickers, digits), so a real ledger's values are STILL harvested and STILL
+            # block — no silent under-block. A stray binary .md yields at-worst harmless
+            # over-blocking noise — no DoS. Loud warning so the operator is not silent.
+            print(
+                f"sanitisation-guard: WARNING — {source} is not UTF-8; "
+                "scanning with latin-1 fallback (detection preserved).",
+                file=sys.stderr,
+            )
+            try:
+                text = path.read_text(encoding="latin-1")
+            except OSError as exc:
+                raise LedgerReadError(f"cannot read local/ private file {source}") from exc
+        except OSError as exc:
+            # Genuinely unreadable (permission/IO). is_file() above already filtered
+            # dirs/broken symlinks, so this is a real file whose protection we cannot
+            # verify — fail CLOSED (the harvest aborts; re-run after fixing the file).
+            raise LedgerReadError(f"cannot read local/ private file {source}") from exc
 
         # Extract ISINs
         for isin in ISIN_RE.findall(text):
@@ -295,8 +357,10 @@ def staged_added_text() -> str:
             if line.startswith("+") and not line.startswith("+++"):
                 lines.append(line[1:])  # Remove leading "+"
         return "\n".join(lines)
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return ""
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        # A genuine git error — fail CLOSED. A clean run with no '+' lines returns ""
+        # above (empty-but-valid → PASSES); only an ERROR reaches here.
+        raise GitInvocationError("git diff --cached failed") from exc
 
 
 def range_added_text(rng: str) -> str:
@@ -318,8 +382,19 @@ def range_added_text(rng: str) -> str:
             if line.startswith("+") and not line.startswith("+++"):
                 lines.append(line[1:])  # Remove leading "+"
         return "\n".join(lines)
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return ""
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        # A genuine git error — fail CLOSED (see staged_added_text).
+        raise GitInvocationError(f"git log -p failed for range {rng}") from exc
+
+
+def _print_push_block_git_error(detail: str) -> None:
+    """Emit a clean PUSH-BLOCK message for a git/scan error (fail-closed, not a crash)."""
+    print("PUSH BLOCKED — sanitisation guard", file=sys.stderr)
+    print(f"  git invocation failed ({detail}); failing CLOSED.", file=sys.stderr)
+    print(
+        "  Resolve the git error and retry; bypass only with git push --no-verify.",
+        file=sys.stderr,
+    )
 
 
 def find_leaks(records: list[dict], added_text: str, allow: dict) -> list[tuple[str, str]]:
@@ -354,11 +429,17 @@ def find_leaks(records: list[dict], added_text: str, allow: dict) -> list[tuple[
         if kind == "numeric value" and key in allow["values"]:
             continue
 
-        # Check for pattern matches with digit lookarounds
+        # Check for pattern matches. Ticker records use an alpha-AND-digit boundary
+        # (tickers are low-information and prone to coincidental-substring over-blocks);
+        # ISIN and numeric records KEEP the digit-only lookaround — an ISIN is high-value
+        # (over-block, never under-block) and a numeric glued to letters (e.g. "5142EUR")
+        # is the highest-stakes leak class and MUST still match. (S-31 ITEM 1, tickers-only.)
         matched = False
         for pattern in record["patterns"]:
-            # Use digit lookarounds to avoid matching parts of longer numbers
-            regex = re.compile(r"(?<!\d)" + re.escape(pattern) + r"(?!\d)")
+            if kind == "ticker":
+                regex = re.compile(r"(?<![A-Za-z0-9])" + re.escape(pattern) + r"(?![A-Za-z0-9])")
+            else:
+                regex = re.compile(r"(?<!\d)" + re.escape(pattern) + r"(?!\d)")
             for m in regex.finditer(added_text):
                 # Skip a match that sits ENTIRELY inside a diff-side ISO-date span.
                 inside_date = any(
@@ -397,7 +478,17 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    records = extract_private_literals(local_dir)
+    try:
+        records = extract_private_literals(local_dir)
+    except LedgerReadError as exc:
+        print("COMMIT BLOCKED — sanitisation guard", file=sys.stderr)
+        print(f"  {exc}; failing CLOSED.", file=sys.stderr)
+        print(
+            "  Fix the file (permissions/readability) and retry; "
+            "bypass only with git commit --no-verify.",
+            file=sys.stderr,
+        )
+        return 1
 
     if not records:
         print(
@@ -407,7 +498,16 @@ def main() -> int:
         return 0
 
     allow = load_allowlist(ALLOWLIST_PATH)
-    added = staged_added_text()
+    try:
+        added = staged_added_text()
+    except GitInvocationError as exc:
+        print("COMMIT BLOCKED — sanitisation guard", file=sys.stderr)
+        print(f"  git invocation failed ({exc}); failing CLOSED.", file=sys.stderr)
+        print(
+            "  Resolve the git error and retry; bypass only with git commit --no-verify.",
+            file=sys.stderr,
+        )
+        return 1
     leaks = find_leaks(records, added, allow)
 
     if leaks:
@@ -446,7 +546,17 @@ def main_prepush() -> int:
         )
         return 0
 
-    records = extract_private_literals(local_dir)
+    try:
+        records = extract_private_literals(local_dir)
+    except LedgerReadError as exc:
+        print("PUSH BLOCKED — sanitisation guard", file=sys.stderr)
+        print(f"  {exc}; failing CLOSED.", file=sys.stderr)
+        print(
+            "  Fix the file (permissions/readability) and retry; "
+            "bypass only with git push --no-verify.",
+            file=sys.stderr,
+        )
+        return 1
 
     if not records:
         print(
@@ -475,14 +585,29 @@ def main_prepush() -> int:
                 check=True,
             )
             ranges_to_scan.append("origin/main..HEAD")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # origin/main doesn't exist — scan nothing
-            pass
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+            # No stdin AND no origin/main baseline — we cannot establish what to scan.
+            # Scanning nothing here is fail-OPEN; fail CLOSED instead. (Production
+            # pre-push always supplies stdin, so this only affects direct invocation.)
+            _print_push_block_git_error(f"cannot resolve origin/main: {exc}")
+            return 1
     else:
         for line in lines:
             parts = line.split()
             if len(parts) != 4:
-                continue
+                # A real git pre-push always emits 4 whitespace-separated fields; the
+                # empty-line filter above already dropped blanks. A malformed line means
+                # we cannot trust the ranges — fail CLOSED.
+                print("PUSH BLOCKED — sanitisation guard", file=sys.stderr)
+                print(
+                    "  malformed pre-push stdin line (expected 4 fields); failing CLOSED.",
+                    file=sys.stderr,
+                )
+                print(
+                    "  Bypass only with git push --no-verify (use sparingly).",
+                    file=sys.stderr,
+                )
+                return 1
             local_ref, local_sha, remote_ref, remote_sha = parts
 
             # Skip branch deletes (local_sha is all zeros)
@@ -511,8 +636,14 @@ def main_prepush() -> int:
             )
             commits = [c.strip() for c in result.stdout.splitlines() if c.strip()]
         except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-            # If rev-list fails, fall back to range_added_text for the whole range
-            added = range_added_text(rng)
+            # If rev-list fails, fall back to range_added_text for the whole range.
+            # range_added_text now RAISES on a git error → fail CLOSED (never scan
+            # nothing). rev-list's own except is preserved (not weakened to a crash).
+            try:
+                added = range_added_text(rng)
+            except GitInvocationError as exc:
+                _print_push_block_git_error(f"range scan failed for {rng}: {exc}")
+                return 1
             leaks = find_leaks(records, added, allow)
             if leaks:
                 print("PUSH BLOCKED — sanitisation guard", file=sys.stderr)
@@ -553,9 +684,10 @@ def main_prepush() -> int:
                     if line.startswith("+") and not line.startswith("+++"):
                         lines_list.append(line[1:])
                 commit_added = "\n".join(lines_list)
-            except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-                # If git show fails, skip this commit
-                continue
+            except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+                # Cannot read this commit — skipping is fail-OPEN per commit; fail CLOSED.
+                _print_push_block_git_error(f"cannot read commit {commit[:12]}: {exc}")
+                return 1
 
             leaks = find_leaks(records, commit_added, allow)
             if leaks:
