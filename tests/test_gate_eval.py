@@ -528,3 +528,153 @@ class TestArtefactSync:
             "Command: python3 -c \"from scripts.data.gate_eval import compute_gates_content_sha; "
             "import yaml; print(compute_gates_content_sha(yaml.safe_load(open('config/gates.yml').read())))\""
         )
+
+
+# ---------------------------------------------------------------------------
+# Proposal 031 — brent fetch wire-up + ungated stale-core surfacing
+# ---------------------------------------------------------------------------
+
+BRENT_GATE_CFG: dict[str, Any] = {
+    "kind": "numeric",
+    "tiers": {"GREEN": {"max": 80}, "AMBER": {"min": 80, "max": 100}, "RED": {"min": 100}},
+}
+
+# Gates fixture WITH data_staleness.series for ungated-fold tests. The ungated series
+# (CPIAUCSL, ICP...) are deliberately ABSENT from _GATE_STALENESS so a broken impl that
+# reads _GATE_STALENESS instead of these thresholds would score GREEN and FAIL the positive
+# test (D2 — pins the real threshold source).
+GATES_WITH_STALENESS: dict[str, Any] = {
+    "gate_aggregate": {"amber_count_escalation": 3},
+    "deployment_gates": {
+        "brent": BRENT_GATE_CFG,
+        "hormuz": CATEGORICAL_GATE_CFG,
+    },
+    "data_staleness": {
+        "series": {
+            "DCOILBRENTEU": {"source": "FRED", "amber_age_days": 5, "red_age_days": 10},
+            "CPIAUCSL": {"source": "FRED", "amber_age_days": 45, "red_age_days": 60},
+            "ICP.M.U2.N.000000.4.ANR": {"source": "ECB", "amber_age_days": 45, "red_age_days": 60},
+        }
+    },
+}
+
+
+def _series_obs(series_id, value, vintage, source="FRED"):
+    return {"source": source, "series_id": series_id, "as_of": vintage,
+            "value": value, "vintage": vintage, "units": "x"}
+
+
+class TestBrentScoresFromValue:
+    """DoD#1 — fetched DCOILBRENTEU scores its real tier, not None→RED."""
+    def test_brent_amber_from_fetched_value(self):
+        snap = _make_snapshot(
+            series=[_series_obs("DCOILBRENTEU", 97.46, "2099-01-17")],
+            manual_gates={"hormuz": {"value": "Open"}},
+        )
+        report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        assert report["gates"]["brent"]["tier"] == "AMBER"
+        assert report["gates"]["brent"]["data_source"] == "live"
+        assert report["gates"]["brent"]["value"] == 97.46
+
+
+class TestMonthlyVintageParse:
+    """DoD#2 — YYYY-MM monthly vintage parses to a real date; staleness is a real int."""
+    def test_parse_monthly_anchors_first_of_month(self):
+        from scripts.data.gate_eval import _parse_vintage_to_date
+        from datetime import date
+        assert _parse_vintage_to_date("2025-12") == date(2025, 12, 1)
+        assert _parse_vintage_to_date("2099-01-17") == date(2099, 1, 17)
+        assert _parse_vintage_to_date("garbage") is None
+        assert _parse_vintage_to_date("") is None
+        assert _parse_vintage_to_date(None) is None
+
+    def test_monthly_series_staleness_drives_data_confidence(self):
+        # snapshot as_of 2099-06; HICP vintage 2099-01 (monthly) → ~150d stale > red 60 → RED
+        snap = _make_snapshot(
+            series=[_series_obs("ICP.M.U2.N.000000.4.ANR", 1.9, "2099-01", source="ECB"),
+                    _series_obs("DCOILBRENTEU", 70.0, "2099-06-17")],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        # the monthly parse worked (no crash) and the stale HICP drove DC off GREEN
+        assert report["Data_Confidence_Tier"] == "RED"
+
+
+class TestUngatedFoldIn:
+    """DoD#3 — two stale ungated series move DC off GREEN; a fresh ungated leaves GREEN (D2)."""
+    def test_two_stale_ungated_drive_data_confidence_off_green(self):
+        snap = _make_snapshot(
+            series=[
+                _series_obs("CPIAUCSL", 300.0, "2099-01-01"),               # ~165d stale > red 60
+                _series_obs("ICP.M.U2.N.000000.4.ANR", 1.9, "2099-01", source="ECB"),  # monthly stale
+                _series_obs("DCOILBRENTEU", 70.0, "2099-06-17"),            # fresh gated
+            ],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        assert report["Data_Confidence_Tier"] in ("AMBER", "RED")
+
+    def test_fresh_ungated_leaves_data_confidence_green(self):
+        snap = _make_snapshot(
+            series=[
+                _series_obs("CPIAUCSL", 300.0, "2099-06-16"),               # 1d stale → GREEN
+                _series_obs("DCOILBRENTEU", 70.0, "2099-06-17"),            # fresh gated GREEN
+            ],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        assert report["Data_Confidence_Tier"] == "GREEN"
+
+
+class TestCautiousFailContribution:
+    """DoD#5 — live+None→AMBER (cautious); cached+None→GREEN (D4); cached+stale→real tier (L5)."""
+    def test_live_unparseable_vintage_reads_cautious(self):
+        from scripts.data.gate_eval import _data_confidence_contribution
+        assert _data_confidence_contribution(None, {"amber": 45, "red": 60}, "live") == "AMBER"
+
+    def test_cached_none_stays_green(self):
+        from scripts.data.gate_eval import _data_confidence_contribution
+        assert _data_confidence_contribution(None, {"amber": 45, "red": 60}, "cached") == "GREEN"
+
+    def test_unavailable_reads_red(self):
+        from scripts.data.gate_eval import _data_confidence_contribution
+        assert _data_confidence_contribution(None, None, "unavailable") == "RED"
+
+    def test_cached_stale_nonnone_reads_real_tier(self):
+        from scripts.data.gate_eval import _data_confidence_contribution
+        assert _data_confidence_contribution(70, {"amber": 45, "red": 60}, "cached") == "RED"
+
+    def test_live_unparseable_vintage_through_entry_point(self):
+        # A fetched ungated series with a garbage vintage must read cautious via evaluate_gates,
+        # not GREEN (cautious-fail on the production path, D3).
+        snap = _make_snapshot(
+            series=[_series_obs("CPIAUCSL", 300.0, "not-a-date"),
+                    _series_obs("DCOILBRENTEU", 70.0, "2099-06-17")],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        assert report["Data_Confidence_Tier"] in ("AMBER", "RED")
+
+
+class TestGateStalenessConsistency:
+    """DoD#6 — _GATE_STALENESS values agree with gates.yml data_staleness.series (live config)."""
+    def test_gate_staleness_matches_live_gates_yml(self):
+        import yaml
+        from scripts.data.gate_eval import GATES_PATH, SERIES_TO_GATE, _GATE_STALENESS
+        cfg = yaml.safe_load(GATES_PATH.read_text(encoding="utf-8"))
+        series_cfg = cfg["data_staleness"]["series"]
+        # reverse map gate_name -> series_id via SERIES_TO_GATE
+        gate_to_series = {g: s for s, g in SERIES_TO_GATE.items()}
+        for gate_name, thr in _GATE_STALENESS.items():
+            series_id = gate_to_series[gate_name]
+            assert series_id in series_cfg, f"{series_id} (gate {gate_name}) missing from gates.yml"
+            assert thr["amber"] == series_cfg[series_id]["amber_age_days"], gate_name
+            assert thr["red"] == series_cfg[series_id]["red_age_days"], gate_name

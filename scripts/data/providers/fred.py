@@ -32,6 +32,7 @@ _SERIES_META: dict[str, dict[str, str]] = {
     "UNRATE":   {"units_param": "lin",  "units_label": "pct"},
     "PAYEMS":   {"units_param": "chg",  "units_label": "chg_thousands"},   # L16
     "VIXCLS":   {"units_param": "lin",  "units_label": "index"},
+    "DCOILBRENTEU": {"units_param": "lin", "units_label": "USD_per_bbl"},   # daily price level
 }
 _DEFAULT_META = {"units_param": "lin", "units_label": "index"}
 

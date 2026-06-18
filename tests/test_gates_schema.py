@@ -20,7 +20,7 @@ REQUIRED_TOP_KEYS = [
     "cash_floor", "data_staleness", "gate_aggregate",
 ]
 REQUIRED_STALENESS_SERIES = [
-    "CPIAUCSL", "UNRATE", "PAYEMS", "VIXCLS",
+    "CPIAUCSL", "UNRATE", "PAYEMS", "VIXCLS", "DCOILBRENTEU",
     "DFR", "ICP.M.U2.N.000000.4.ANR", "EXR.D.USD.EUR.SP00.A",
 ]
 

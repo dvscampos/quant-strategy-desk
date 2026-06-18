@@ -209,6 +209,10 @@ data_staleness:
       source: FRED
       amber_age_days: 5
       red_age_days: 10
+    DCOILBRENTEU:
+      source: FRED
+      amber_age_days: 5
+      red_age_days: 10
 
     # ECB series
     DFR:

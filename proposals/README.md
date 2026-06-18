@@ -46,6 +46,7 @@
 | 028 | Reconcile Summary canonical contract (S-27) + currency-aware pricing (S-28) | DONE | Daniel | 2026-06-10 | 2026-06-10  |
 | 029 | Pre-push sanitisation remediation — scrub range-diff collisions (20 net-tree = 18 real + 2 synthetic self-FP: 3 SCRUB / 13 ALLOWLIST / 4 CLEAN-LOG) + squash-clean + local archive + pre-push hook | DONE | Daniel | 2026-06-10 | 2026-06-13 |
 | 030 | S-31 sanitisation-guard precision (ticker-only alpha-boundary) + fail-closed both entry-points (git + ledger-read) + corpus process-noise exclusion (convention-glob) | DONE | Daniel | 2026-06-14 | 2026-06-14 |
+| 031 | S-24 brent fetch wire-up (PARTIAL) + S-25 stale-core-macro surfacing into Data_Confidence_Tier (DONE; per-series render row → S-25d) | DONE | Daniel | 2026-06-17 | 2026-06-17 |
 
 ## When to write a proposal
 

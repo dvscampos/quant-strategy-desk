@@ -319,6 +319,7 @@ The snapshot file is the audit artefact. The `snapshot_hash` field is computed o
 | **Schema version rejected** | `gate_eval` prints "schema_version exceeds known max" | Upgrade `gate_eval` to handle the new version (new proposal required). |
 | **Data_Confidence_Tier = RED** | Output row in gate table shows `Data_Confidence_Tier: **RED**` | See §Data Degradation Protocol — session RED triggers: halve deployment OR defer execution. Do not silently ignore. |
 | **Partial failure** | `gate_eval` succeeds but ≥1 gate has `data_source: unavailable` | That gate is scored RED (Data Failure Protocol). The Risk Guardian inspects `data_source` per gate — a gate is not "green by omission" when data is missing. |
+| **Stale ungated core series** | `Data_Confidence_Tier` is AMBER/RED but every one of the 8 gates looks fine | Fetched-but-ungated core-macro series (CPI, UNRATE, DFR, euro-area HICP) also fold into `Data_Confidence_Tier`: a stale one (or one whose vintage cannot be parsed) drives it cautious even though it is not one of the 8 gates. The rendered table shows the 8 gates + the aggregate tier only — inspect the snapshot's series vintages to identify which core series is stale (per-series surfacing in the table is a tracked follow-up, S-25d). |
 
 ### Response procedure
 

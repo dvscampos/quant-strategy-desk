@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -162,6 +163,46 @@ def _staleness_tier(staleness_days: int | None, thresholds: dict | None) -> Tier
     if staleness_days >= thresholds.get("amber", 999_999):
         return "AMBER"
     return "GREEN"
+
+
+def _parse_vintage_to_date(vintage: str | None) -> date | None:
+    """Parse a vintage string to a date.
+
+    Handles daily YYYY-MM-DD and monthly YYYY-MM (ECB monthly obs, e.g. '2025-12').
+    Monthly is anchored to the first of the month — the conservative (age-overstating)
+    direction for staleness. Returns None if unparseable.
+    """
+    if not vintage:
+        return None
+    v = vintage[:10]
+    try:
+        return date.fromisoformat(v)
+    except ValueError:
+        m = re.fullmatch(r"(\d{4})-(\d{2})", v)
+        if m:
+            try:
+                return date(int(m.group(1)), int(m.group(2)), 1)
+            except ValueError:
+                return None
+        return None
+
+
+def _data_confidence_contribution(
+    staleness_days: int | None, thresholds: dict | None, data_source: DataSource
+) -> Tier:
+    """Cautious-fail Data-Confidence tier for one series.
+
+    - unavailable        -> RED
+    - live   + None      -> AMBER  (fetched series whose vintage couldn't be parsed:
+                                    must NOT read GREEN — cautious-fail)
+    - cached + None      -> GREEN  (manual_gates are fresh-by-design, D4)
+    - any    + non-None  -> _staleness_tier(staleness_days, thresholds)
+    """
+    if data_source == "unavailable":
+        return "RED"
+    if staleness_days is None and data_source == "live":
+        return "AMBER"
+    return _staleness_tier(staleness_days, thresholds)
 
 
 def _format_threshold_band(gate_cfg: dict) -> str:
@@ -393,13 +434,33 @@ def evaluate_gates(
 
         market_tiers.append(tier)
 
-        # Data confidence staleness (L26)
-        if data_source == "unavailable":
-            data_staleness_tiers.append("RED")
-        else:
-            data_staleness_tiers.append(
-                _staleness_tier(staleness_days, _GATE_STALENESS.get(gate_name))
+        # Data confidence staleness (L26). Gated threshold source stays _GATE_STALENESS
+        # (no dual-source drift); the helper only adds the live+None cautious-fail.
+        data_staleness_tiers.append(
+            _data_confidence_contribution(
+                staleness_days, _GATE_STALENESS.get(gate_name), data_source
             )
+        )
+
+    # S-25: fold fetched-but-ungated core-macro series into Data_Confidence.
+    # Ungated set = (snapshot series present) ∩ (configured staleness series) − (gated series).
+    # Thresholds come from gates.yml data_staleness.series (NOT _GATE_STALENESS, which has no
+    # ungated entries → would read None→GREEN-always = the silent-GREEN this closes). D1.
+    staleness_cfg = gates_config.get("data_staleness", {}).get("series", {})
+    gated_series_ids = set(SERIES_TO_GATE.keys())
+    for series_id, obs in series_map.items():
+        if series_id in gated_series_ids or series_id not in staleness_cfg:
+            continue
+        cfg = staleness_cfg[series_id]
+        thresholds = {"amber": cfg.get("amber_age_days"), "red": cfg.get("red_age_days")}
+        ungated_staleness: int | None = None
+        if snap_date:
+            vintage_date = _parse_vintage_to_date(obs.get("vintage"))
+            if vintage_date is not None:
+                ungated_staleness = (snap_date - vintage_date).days
+        data_staleness_tiers.append(
+            _data_confidence_contribution(ungated_staleness, thresholds, "live")
+        )
 
     Market_Risk_Tier = _aggregate_market_tier(market_tiers, gates_config)
 
