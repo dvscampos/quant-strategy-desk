@@ -3,8 +3,8 @@
 > **Generated**: 2026-04-25 (Proposal 003 Phase 1B execution)
 > **gates.yml canonical SHA256 at replay**: `89ff983dcef55eb53d6f4f8abb5733367c3ebd1da11d43a75d6f208f42ded440`
 > *(Canonical content hash via `compute_gates_content_sha()` — comment-insensitive; see Proposal 003 Amendments for L34 reconciliation)*
-> **Current gates.yml canonical SHA256 (post-Proposal 031, 2026-06-17)**: `a8d90addea00c75cfe114859707353b3483a24e1d1220321cbc84a744ef5e542`
-> *(Proposal 031 added `DCOILBRENTEU` to `data_staleness.series` — additive; no replayed deployment-gate threshold changed, so the divergence analysis below is unaffected. Only the canonical-content SHA label moves.)*
+> **Current gates.yml canonical SHA256 (post-Proposal 032, 2026-06-19)**: `c437a02546412205c66a8df0bcc26864a7db04533e323514c6f5af85568cec96`
+> *(Proposal 032 swapped the dead ECB euro-area HICP key `ICP.M.U2.N.000000.4.ANR` for a Eurostat `ei_cphi_m.TOTAL.RT12.EA` entry in `data_staleness.series` — a same-signal data-source migration; no replayed deployment-gate threshold changed, so the divergence analysis below is unaffected. Only the canonical-content SHA label moves. The prior post-031 hash `a8d90add…` is preserved in the Proposal 003 / 031 Status Logs.)*
 > **Snapshot source**: Synthetic vintage fixtures in `local/snapshots/backtest/BT-01..BT-12.json`
 > **Note**: ALFRED/SDW as-of queries are deferred (requires live API credentials).
 >   Values sourced from BT session files. Actual vintage queries are the DoD #10b target (2026-05-16).

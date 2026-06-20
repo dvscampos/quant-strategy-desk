@@ -22,6 +22,7 @@ import vcr
 from scripts.data.http_client import HttpClient, HttpError
 from scripts.data.providers.fred import FredProvider
 from scripts.data.providers.ecb import EcbProvider
+from scripts.data.providers.eurostat import EurostatProvider, _parse_jsonstat
 
 FIXTURES = Path(__file__).parent / "fixtures" / "data"
 CACHE_DIR = Path("/tmp/test_http_cache")
@@ -103,3 +104,66 @@ def test_ecb_malformed_response():
 def test_ecb_unknown_alias():
     with pytest.raises(KeyError, match="not in registry"):
         _ecb_client().fetch("UNKNOWN_SERIES", max_age_days=None)
+
+
+def _eurostat_client() -> EurostatProvider:
+    return EurostatProvider(HttpClient(cache_dir=CACHE_DIR, min_interval=0, skip_cache=True))
+
+
+# ---- Eurostat success (cassette) ----
+
+@_VCR.use_cassette(str(FIXTURES / "eurostat_hicp_success.yaml"))
+def test_eurostat_success():
+    obs = _eurostat_client().fetch("ei_cphi_m.TOTAL.RT12.EA", max_age_days=None)
+    assert obs.source == "EUROSTAT"
+    assert obs.series_id == "ei_cphi_m.TOTAL.RT12.EA"
+    assert obs.value == pytest.approx(3.2)
+    assert obs.as_of == "2026-05"
+    assert obs.vintage == obs.as_of      # L13: vintage == as_of for Eurostat
+    assert obs.units == "pct_annual_rate"
+
+
+# ---- Eurostat unknown alias → KeyError ----
+
+def test_eurostat_unknown_alias():
+    with pytest.raises(KeyError, match="not in registry"):
+        _eurostat_client().fetch("UNKNOWN_SERIES", max_age_days=None)
+
+
+# ---- Eurostat parser: sparse latest period (null obs omitted from value) → HttpError ----
+
+def test_eurostat_parse_sparse_latest_raises():
+    # latest time ordinal is 1 (2026-05) but `value` only has ordinal 0 → sparse/suppressed
+    body = '{"value":{"0":3.0},"dimension":{"time":{"category":{"index":{"2026-04":0,"2026-05":1}}}}}'
+    with pytest.raises(HttpError, match="sparse|absent"):
+        _parse_jsonstat(body, "ei_cphi_m.TOTAL.RT12.EA")
+
+
+# ---- Eurostat parser: malformed (missing dimension/value) → HttpError ----
+
+def test_eurostat_parse_malformed_raises():
+    with pytest.raises(HttpError, match="failed to parse"):
+        _parse_jsonstat('{"class":"dataset"}', "ei_cphi_m.TOTAL.RT12.EA")
+
+
+# ---- _build_providers routes EUROSTAT + fails fast on unknown alias ----
+
+def _min_gates(series: dict) -> dict:
+    return {"data_staleness": {
+        "retry": {"max_attempts": 1, "backoff_seconds_base": 0.1, "max_retry_after_seconds": 1},
+        "series": series,
+    }}
+
+
+def test_build_providers_routes_eurostat():
+    from scripts.data.cli import _build_providers
+    gates = _min_gates({"ei_cphi_m.TOTAL.RT12.EA": {"source": "EUROSTAT", "amber_age_days": 55, "red_age_days": 90}})
+    providers = _build_providers(gates)
+    assert isinstance(providers["ei_cphi_m.TOTAL.RT12.EA"], EurostatProvider)
+
+
+def test_build_providers_eurostat_fail_fast_on_unknown_alias():
+    from scripts.data.cli import _build_providers
+    gates = _min_gates({"ei_cphi_m.BOGUS.ALIAS": {"source": "EUROSTAT", "amber_age_days": 55, "red_age_days": 90}})
+    with pytest.raises(SystemExit):
+        _build_providers(gates)

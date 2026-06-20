@@ -21,7 +21,7 @@ REQUIRED_TOP_KEYS = [
 ]
 REQUIRED_STALENESS_SERIES = [
     "CPIAUCSL", "UNRATE", "PAYEMS", "VIXCLS", "DCOILBRENTEU",
-    "DFR", "ICP.M.U2.N.000000.4.ANR", "EXR.D.USD.EUR.SP00.A",
+    "DFR", "ei_cphi_m.TOTAL.RT12.EA", "EXR.D.USD.EUR.SP00.A",
 ]
 
 
@@ -157,3 +157,24 @@ def test_retry_config():
     assert "max_retry_after_seconds" in retry
     assert isinstance(retry["max_attempts"], int)
     assert retry["max_retry_after_seconds"] <= 300, "Cap must be sane (≤ 300s)"
+
+
+def test_dead_icp_key_removed():
+    """S-25c (DoD#9) — the dead ECB HICP key must be gone from gates.yml AND ecb.py."""
+    from scripts.data.providers.ecb import EcbProvider
+    series = GATES["data_staleness"]["series"]
+    assert "ICP.M.U2.N.000000.4.ANR" not in series, "dead ICP key still in gates.yml"
+    assert "ICP.M.U2.N.000000.4.ANR" not in EcbProvider.known_series(), "dead ICP key still in ecb registry"
+
+
+def test_eurostat_aliases_registered():
+    """S-25c (DoD#10) — every EUROSTAT gates.yml alias must be registered in
+    EurostatProvider.known_series(). _build_providers only catches a mismatch at runtime fetch
+    (unresolvable → sys.exit), so this is the CI-level ghost-contract guard."""
+    from scripts.data.providers.eurostat import EurostatProvider
+    series = GATES["data_staleness"]["series"]
+    eurostat_aliases = [s for s, cfg in series.items() if cfg["source"] == "EUROSTAT"]
+    assert eurostat_aliases, "expected at least one EUROSTAT series in gates.yml"
+    known = EurostatProvider.known_series()
+    for alias in eurostat_aliases:
+        assert alias in known, f"EUROSTAT alias {alias!r} not in EurostatProvider._SERIES_REGISTRY"

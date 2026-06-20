@@ -47,6 +47,7 @@ def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
     from scripts.data.http_client import HttpClient
     from scripts.data.providers.fred import FredProvider
     from scripts.data.providers.ecb import EcbProvider
+    from scripts.data.providers.eurostat import EurostatProvider
 
     retry = gates["data_staleness"]["retry"]
     http = HttpClient(
@@ -59,6 +60,7 @@ def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
     )
     fred = FredProvider(http)
     ecb = EcbProvider(http)
+    eurostat = EurostatProvider(http)
 
     providers: dict = {}
     unresolvable = []
@@ -71,6 +73,11 @@ def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
                 unresolvable.append(series_id)
             else:
                 providers[series_id] = ecb
+        elif source == "EUROSTAT":
+            if series_id not in eurostat.known_series():
+                unresolvable.append(series_id)
+            else:
+                providers[series_id] = eurostat
         else:
             unresolvable.append(series_id)
 

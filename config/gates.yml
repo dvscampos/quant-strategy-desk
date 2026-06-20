@@ -219,14 +219,16 @@ data_staleness:
       source: ECB
       amber_age_days: 60
       red_age_days: 90
-    ICP.M.U2.N.000000.4.ANR:
-      source: ECB
-      amber_age_days: 45
-      red_age_days: 60
     EXR.D.USD.EUR.SP00.A:
       source: ECB
       amber_age_days: 5
       red_age_days: 10
+
+    # Eurostat series
+    ei_cphi_m.TOTAL.RT12.EA:
+      source: EUROSTAT
+      amber_age_days: 55
+      red_age_days: 90
 
   retry:
     max_attempts: 3

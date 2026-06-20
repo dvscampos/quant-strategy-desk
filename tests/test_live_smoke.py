@@ -4,7 +4,7 @@ Run with:
     PYTEST_LIVE=1 python3 -m pytest tests/test_live_smoke.py -v
 
 This test is explicitly excluded from normal CI. It fetches real data from
-FRED and ECB, writes a real snapshot, and verifies the hash.
+FRED, ECB, and Eurostat, writes a real snapshot, and verifies the hash.
 """
 
 from __future__ import annotations
@@ -21,11 +21,12 @@ ROOT = Path(__file__).parent.parent
 
 
 def test_live_fetch_and_snapshot(tmp_path):
-    """Fetch real FRED + ECB data, write snapshot, verify hash and schema."""
+    """Fetch real FRED + ECB + Eurostat data, write snapshot, verify hash and schema."""
     import yaml
     from scripts.data.http_client import HttpClient
     from scripts.data.providers.fred import FredProvider
     from scripts.data.providers.ecb import EcbProvider
+    from scripts.data.providers.eurostat import EurostatProvider
     from scripts.data.snapshot import SnapshotWriter
 
     gates = yaml.safe_load((ROOT / "config" / "gates.yml").read_text())
@@ -40,12 +41,13 @@ def test_live_fetch_and_snapshot(tmp_path):
     )
     fred = FredProvider(http)
     ecb = EcbProvider(http)
+    eurostat = EurostatProvider(http)
 
     series_cfg = gates["data_staleness"]["series"]
     observations = []
     for series_id, cfg in series_cfg.items():
         source = cfg["source"]
-        provider = fred if source == "FRED" else ecb
+        provider = {"FRED": fred, "ECB": ecb, "EUROSTAT": eurostat}[source]
         obs = provider.fetch(series_id, max_age_days=cfg["amber_age_days"])
         print(f"  {obs.source} {obs.series_id}: {obs.value} {obs.units} "
               f"(as_of={obs.as_of}, vintage={obs.vintage})")
@@ -64,7 +66,7 @@ def test_live_fetch_and_snapshot(tmp_path):
     assert payload["snapshot_hash"].startswith("sha256:")
     assert len(payload["series"]) == len(series_cfg)
     for obs_dict in payload["series"]:
-        assert obs_dict["source"] in ("FRED", "ECB")
+        assert obs_dict["source"] in ("FRED", "ECB", "EUROSTAT")
         assert isinstance(obs_dict["value"], float)
         assert obs_dict["vintage"] != ""
 

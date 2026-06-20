@@ -34,11 +34,6 @@ _SERIES_REGISTRY: dict[str, tuple[str, str, str]] = {
         "D.U2.EUR.4F.KR.DFR.LEV",
         "pct",
     ),
-    "ICP.M.U2.N.000000.4.ANR": (
-        "ICP",
-        "M.U2.N.000000.4.ANR",
-        "pct_annual_rate",
-    ),
     "EXR.D.USD.EUR.SP00.A": (
         "EXR",
         "D.USD.EUR.SP00.A",

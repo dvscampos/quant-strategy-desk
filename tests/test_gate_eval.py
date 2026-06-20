@@ -540,7 +540,7 @@ BRENT_GATE_CFG: dict[str, Any] = {
 }
 
 # Gates fixture WITH data_staleness.series for ungated-fold tests. The ungated series
-# (CPIAUCSL, ICP...) are deliberately ABSENT from _GATE_STALENESS so a broken impl that
+# (CPIAUCSL, ei_cphi_m...) are deliberately ABSENT from _GATE_STALENESS so a broken impl that
 # reads _GATE_STALENESS instead of these thresholds would score GREEN and FAIL the positive
 # test (D2 — pins the real threshold source).
 GATES_WITH_STALENESS: dict[str, Any] = {
@@ -553,7 +553,7 @@ GATES_WITH_STALENESS: dict[str, Any] = {
         "series": {
             "DCOILBRENTEU": {"source": "FRED", "amber_age_days": 5, "red_age_days": 10},
             "CPIAUCSL": {"source": "FRED", "amber_age_days": 45, "red_age_days": 60},
-            "ICP.M.U2.N.000000.4.ANR": {"source": "ECB", "amber_age_days": 45, "red_age_days": 60},
+            "ei_cphi_m.TOTAL.RT12.EA": {"source": "EUROSTAT", "amber_age_days": 55, "red_age_days": 90},
         }
     },
 }
@@ -589,9 +589,9 @@ class TestMonthlyVintageParse:
         assert _parse_vintage_to_date(None) is None
 
     def test_monthly_series_staleness_drives_data_confidence(self):
-        # snapshot as_of 2099-06; HICP vintage 2099-01 (monthly) → ~150d stale > red 60 → RED
+        # snapshot as_of 2099-06; HICP vintage 2099-01 (monthly) → ~167d stale > red 90 → RED
         snap = _make_snapshot(
-            series=[_series_obs("ICP.M.U2.N.000000.4.ANR", 1.9, "2099-01", source="ECB"),
+            series=[_series_obs("ei_cphi_m.TOTAL.RT12.EA", 1.9, "2099-01", source="EUROSTAT"),
                     _series_obs("DCOILBRENTEU", 70.0, "2099-06-17")],
             manual_gates={"hormuz": {"value": "Open"}},
             session="2099-06",
@@ -608,7 +608,7 @@ class TestUngatedFoldIn:
         snap = _make_snapshot(
             series=[
                 _series_obs("CPIAUCSL", 300.0, "2099-01-01"),               # ~165d stale > red 60
-                _series_obs("ICP.M.U2.N.000000.4.ANR", 1.9, "2099-01", source="ECB"),  # monthly stale
+                _series_obs("ei_cphi_m.TOTAL.RT12.EA", 1.9, "2099-01", source="EUROSTAT"),  # monthly stale
                 _series_obs("DCOILBRENTEU", 70.0, "2099-06-17"),            # fresh gated
             ],
             manual_gates={"hormuz": {"value": "Open"}},
@@ -661,6 +661,38 @@ class TestCautiousFailContribution:
         )
         snap["as_of"] = "2099-06-17T10:00:00Z"
         report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        assert report["Data_Confidence_Tier"] in ("AMBER", "RED")
+
+
+class TestEurostatHicpUngatedFold:
+    """S-25c (DoD#4) — the migrated Eurostat HICP series folds into Data_Confidence via the
+    LIVE ungated path: fresh<55d → GREEN; >90d → RED; None/unparseable → AMBER+ (cautious-fail).
+    Driven through evaluate_gates on an ISOLATED fixture (only the HICP ungated series, plus a
+    fresh gated brent to keep the gated leg GREEN) so the aggregate can reach GREEN."""
+
+    def _snap(self, vintage):
+        snap = _make_snapshot(
+            series=[_series_obs("ei_cphi_m.TOTAL.RT12.EA", 1.9, vintage, source="EUROSTAT"),
+                    _series_obs("DCOILBRENTEU", 70.0, "2099-06-17")],  # fresh gated → brent GREEN
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        return snap
+
+    def test_fresh_under_55d_green(self):
+        # vintage 2099-05 (monthly → 2099-05-01) vs as_of 2099-06-17 = 47d < amber 55 → GREEN
+        report = evaluate_gates(self._snap("2099-05"), GATES_WITH_STALENESS, verify_hash=False)
+        assert report["Data_Confidence_Tier"] == "GREEN"
+
+    def test_over_90d_red(self):
+        # vintage 2099-01 → ~167d > red 90 → RED (Risk condition: RED still fires on a genuine stall)
+        report = evaluate_gates(self._snap("2099-01"), GATES_WITH_STALENESS, verify_hash=False)
+        assert report["Data_Confidence_Tier"] == "RED"
+
+    def test_unparseable_vintage_cautious(self):
+        # garbage vintage on the live ungated path → cautious AMBER+, never silent GREEN
+        report = evaluate_gates(self._snap("not-a-date"), GATES_WITH_STALENESS, verify_hash=False)
         assert report["Data_Confidence_Tier"] in ("AMBER", "RED")
 
 
