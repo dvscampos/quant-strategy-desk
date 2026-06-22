@@ -710,3 +710,87 @@ class TestGateStalenessConsistency:
             assert series_id in series_cfg, f"{series_id} (gate {gate_name}) missing from gates.yml"
             assert thr["amber"] == series_cfg[series_id]["amber_age_days"], gate_name
             assert thr["red"] == series_cfg[series_id]["red_age_days"], gate_name
+
+
+class TestS25dPerSeriesRender:
+    """S-25d (Proposal 033) — per-series ungated core-macro visibility in render_table."""
+
+    def _snap(self):
+        snap = _make_snapshot(
+            series=[
+                _series_obs("CPIAUCSL", 300.0, "2099-01-01"),                                # ~167d > red 60 → RED
+                _series_obs("ei_cphi_m.TOTAL.RT12.EA", 1.9, "2099-06", source="EUROSTAT"),    # monthly fresh → GREEN
+                _series_obs("DCOILBRENTEU", 70.0, "2099-06-17"),                              # gated + in staleness_cfg
+            ],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        return snap
+
+    def test_fold_captures_distinct_ungated_with_individual_tiers(self):
+        # DoD#1 — ≥2 distinct ungated series carry their correct individual tiers (defeats a hardcode).
+        report = evaluate_gates(self._snap(), GATES_WITH_STALENESS, verify_hash=False)
+        recs = {r["series_id"]: r for r in report["data_confidence_series"]}
+        assert recs["CPIAUCSL"]["tier"] == "RED"
+        assert recs["ei_cphi_m.TOTAL.RT12.EA"]["tier"] == "GREEN"
+        # DoD#1 negative — a gated series that is ALSO in staleness_cfg is EXCLUDED from the capture.
+        assert "DCOILBRENTEU" not in recs
+
+    def test_render_emits_non_pipe_block(self):
+        # DoD#3 — block present with human-readable label + tier + age; no block line is a pipe row.
+        report = evaluate_gates(self._snap(), GATES_WITH_STALENESS, verify_hash=False)
+        md = render_table(report, fmt="markdown")
+        assert "**Data Confidence — ungated core series:**" in md
+        assert "- US CPI — RED (" in md
+        block = md.split("**Data Confidence — ungated core series:**")[1]
+        for line in block.splitlines():
+            assert not line.strip().startswith("|")
+
+    def test_field_shape_and_json_round_trip(self):
+        # DoD#2 — positive in-memory shape assertion + json round-trip equality (forward-drift guard).
+        import json as _json
+        report = evaluate_gates(self._snap(), GATES_WITH_STALENESS, verify_hash=False)
+        recs = report["data_confidence_series"]
+        assert isinstance(recs, list)
+        for r in recs:
+            assert set(r.keys()) == {"series_id", "label", "staleness_days", "tier"}
+            assert isinstance(r["series_id"], str)
+            assert isinstance(r["label"], str)
+            assert r["staleness_days"] is None or isinstance(r["staleness_days"], int)
+            assert r["tier"] in ("GREEN", "AMBER", "RED")
+        round_tripped = _json.loads(render_table(report, fmt="json"))["data_confidence_series"]
+        assert round_tripped == recs
+
+    def test_unparseable_vintage_renders_age_unknown_cautious_amber(self):
+        # DoD#3/#5 — live + None vintage → cautious-fail AMBER + "age unknown" (never silent GREEN/blank).
+        snap = _make_snapshot(
+            series=[_series_obs("CPIAUCSL", 300.0, "garbage-vintage")],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        report = evaluate_gates(snap, GATES_WITH_STALENESS, verify_hash=False)
+        rec = [r for r in report["data_confidence_series"] if r["series_id"] == "CPIAUCSL"][0]
+        assert rec["staleness_days"] is None
+        assert rec["tier"] == "AMBER"
+        assert "age unknown" in render_table(report, fmt="markdown")
+
+    def test_raw_id_fallback_label(self):
+        # DoD#3 — a staleness_cfg series absent from _UNGATED_SERIES_LABEL renders its raw id (no crash).
+        gates = {
+            "gate_aggregate": {"amber_count_escalation": 3},
+            "deployment_gates": {"hormuz": CATEGORICAL_GATE_CFG},
+            "data_staleness": {
+                "series": {"SOME_UNMAPPED_ID": {"source": "FRED", "amber_age_days": 45, "red_age_days": 60}}
+            },
+        }
+        snap = _make_snapshot(
+            series=[_series_obs("SOME_UNMAPPED_ID", 1.0, "2099-06-16")],
+            manual_gates={"hormuz": {"value": "Open"}},
+            session="2099-06",
+        )
+        snap["as_of"] = "2099-06-17T10:00:00Z"
+        report = evaluate_gates(snap, gates, verify_hash=False)
+        rec = report["data_confidence_series"][0]
+        assert rec["label"] == "SOME_UNMAPPED_ID"

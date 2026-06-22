@@ -83,6 +83,7 @@ class GateReport(TypedDict):
     Data_Confidence_Tier: Tier
     gates_yml_sha256: str
     snapshot_sha256: str
+    data_confidence_series: list[dict]
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,16 @@ _GATE_STALENESS: dict[str, dict[str, int]] = {
     "us_payrolls": {"amber": 45, "red": 60},
     "eur_usd": {"amber": 5, "red": 10},
     "brent": {"amber": 5, "red": 10},
+}
+
+
+# Human-readable labels for fetched-but-ungated core-macro series (S-25d render).
+# Unmapped series fall back to their raw id in render_table.
+_UNGATED_SERIES_LABEL: dict[str, str] = {
+    "CPIAUCSL": "US CPI",
+    "UNRATE": "US unemployment",
+    "DFR": "ECB deposit rate",
+    "ei_cphi_m.TOTAL.RT12.EA": "Euro-area HICP",
 }
 
 
@@ -448,6 +459,7 @@ def evaluate_gates(
     # ungated entries → would read None→GREEN-always = the silent-GREEN this closes). D1.
     staleness_cfg = gates_config.get("data_staleness", {}).get("series", {})
     gated_series_ids = set(SERIES_TO_GATE.keys())
+    data_confidence_series: list[dict] = []
     for series_id, obs in series_map.items():
         if series_id in gated_series_ids or series_id not in staleness_cfg:
             continue
@@ -458,8 +470,18 @@ def evaluate_gates(
             vintage_date = _parse_vintage_to_date(obs.get("vintage"))
             if vintage_date is not None:
                 ungated_staleness = (snap_date - vintage_date).days
-        data_staleness_tiers.append(
-            _data_confidence_contribution(ungated_staleness, thresholds, "live")
+        # S-25d: one tier computation, value reused in two sinks — the aggregate
+        # input (data_staleness_tiers) is unchanged; data_confidence_series carries
+        # the same scalar tier value for per-series render.
+        ungated_tier = _data_confidence_contribution(ungated_staleness, thresholds, "live")
+        data_staleness_tiers.append(ungated_tier)
+        data_confidence_series.append(
+            {
+                "series_id": series_id,
+                "label": _UNGATED_SERIES_LABEL.get(series_id, series_id),
+                "staleness_days": ungated_staleness,
+                "tier": ungated_tier,
+            }
         )
 
     Market_Risk_Tier = _aggregate_market_tier(market_tiers, gates_config)
@@ -481,6 +503,7 @@ def evaluate_gates(
         Data_Confidence_Tier=Data_Confidence_Tier,
         gates_yml_sha256=gates_yml_sha256,
         snapshot_sha256=snapshot_sha256,
+        data_confidence_series=data_confidence_series,
     )
 
 
@@ -525,6 +548,22 @@ def render_table(report: GateReport, fmt: Literal["markdown", "json"]) -> str:
             f"**Data_Confidence_Tier**: {report['Data_Confidence_Tier']}",
         ]
     )
+
+    # S-25d: per-series ungated core-macro visibility. Non-pipe block (lines start
+    # with ** / -) so parity_check's startswith("|") parser never sees it; bare tier
+    # tokens (not **bold**) also miss parity_check's _TIER_PATTERN. Sorted by series_id
+    # for canonical output (the aggregate is a count → order-independent).
+    series_records = report.get("data_confidence_series", [])
+    if series_records:
+        lines.append("")
+        lines.append("**Data Confidence — ungated core series:**")
+        for rec in sorted(series_records, key=lambda r: r["series_id"]):
+            age = (
+                f"{rec['staleness_days']}d"
+                if rec["staleness_days"] is not None
+                else "age unknown"
+            )
+            lines.append(f"- {rec['label']} — {rec['tier']} ({age})")
     return "\n".join(lines)
 
 

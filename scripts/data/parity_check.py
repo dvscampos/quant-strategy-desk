@@ -64,6 +64,7 @@ _PROSE_LABEL_TO_GATE_ID: dict[str, str] = {
     "ecb deposit rate": "ecb",
     "us payrolls": "us_payrolls",
     "payrolls": "us_payrolls",
+    "us_payrolls": "us_payrolls",  # gate-id label as emitted verbatim by render_table
     "eur/usd": "eur_usd",
     "eur_usd": "eur_usd",
     "tariff": "tariff",

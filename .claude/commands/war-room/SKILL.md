@@ -187,7 +187,7 @@ cp_path.write_text(json.dumps(cp, indent=2))
 If Data_Confidence_Tier = RED: recommend halting and re-fetching before Strike Team launches.
 
 **Step B.5 — Paste gate table into Phase 2 of session file verbatim**
-The orchestrator pastes the markdown table output exactly as printed by gate_eval.
+The orchestrator pastes the full gate_eval output (the gate table plus the ungated core-series block) exactly as printed by gate_eval.
 The Macro Strategist may *interpret* tiers but must cite the tier label verbatim.
 
 **Verification (DoD #7):**
