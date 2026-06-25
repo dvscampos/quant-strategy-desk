@@ -1,6 +1,10 @@
 requests>=2.31.0
 pyyaml>=6.0
 python-dotenv>=1.0.0
+yfinance>=0.2.54
+# load-bearing transitives of yfinance (also used by backtesting/)
+pandas>=2.0
+numpy>=1.24
 
 # Testing only
 vcrpy>=6.0.0

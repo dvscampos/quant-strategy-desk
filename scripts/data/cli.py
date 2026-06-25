@@ -48,6 +48,7 @@ def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
     from scripts.data.providers.fred import FredProvider
     from scripts.data.providers.ecb import EcbProvider
     from scripts.data.providers.eurostat import EurostatProvider
+    from scripts.data.providers.equity_ma import EquityMaProvider
 
     retry = gates["data_staleness"]["retry"]
     http = HttpClient(
@@ -61,6 +62,7 @@ def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
     fred = FredProvider(http)
     ecb = EcbProvider(http)
     eurostat = EurostatProvider(http)
+    equity = EquityMaProvider()
 
     providers: dict = {}
     unresolvable = []
@@ -78,6 +80,11 @@ def _build_providers(gates: dict, *, no_cache: bool = False) -> dict:
                 unresolvable.append(series_id)
             else:
                 providers[series_id] = eurostat
+        elif source == "YFINANCE":
+            if series_id not in equity.known_series():
+                unresolvable.append(series_id)
+            else:
+                providers[series_id] = equity
         else:
             unresolvable.append(series_id)
 
@@ -151,6 +158,68 @@ def _cmd_gate_eval(args: argparse.Namespace) -> None:
     sys.exit(exit_code)
 
 
+def _cmd_set_manual(args: argparse.Namespace) -> None:
+    """Set manual categorical gates on an existing snapshot (in-place, atomic write)."""
+    import json
+    from scripts.data.snapshot import SnapshotWriter
+
+    # Parse gate assignments (GATE=VALUE, split on first =)
+    parsed_gates = {}
+    for entry in args.gate:
+        k, sep, v = entry.partition("=")
+        if not sep or not k.strip() or not v.strip():
+            log.error("Invalid gate assignment %r — must be GATE=VALUE", entry)
+            sys.exit(1)
+        parsed_gates[k.strip()] = v.strip()
+
+    # Load gates config for validation
+    gates = _load_gates()
+    dep = gates["deployment_gates"]
+
+    # WRITE-SIDE STRICT validation — reject unknown/numeric/invalid-value
+    for k, v in parsed_gates.items():
+        if k not in dep:
+            log.error("Unknown gate %r — not in deployment_gates", k)
+            sys.exit(1)
+        gate_cfg = dep[k]
+        if gate_cfg.get("kind") != "categorical":
+            log.error("Gate %r is not categorical (kind=%s) — cannot set manually", k, gate_cfg.get("kind"))
+            sys.exit(1)
+        valid_values = set(gate_cfg.get("tiers", {}).values())
+        if v not in valid_values:
+            log.error("Gate %r value %r not a valid tier label — must be one of: %s", k, v, sorted(valid_values))
+            sys.exit(1)
+
+    # Load existing snapshot (require-exists)
+    out_path = SNAPSHOTS_DIR / f"{args.session}.json"
+    if not out_path.exists():
+        log.error("Snapshot %s does not exist — run fetch first", out_path)
+        sys.exit(1)
+
+    snapshot = json.loads(out_path.read_bytes())
+
+    # Verify existing hash (refuse-on-tamper)
+    if snapshot.get("snapshot_hash") != SnapshotWriter.compute_hash(snapshot):
+        log.error("Snapshot hash mismatch — refusing to modify a tampered snapshot; re-fetch")
+        sys.exit(1)
+
+    # Build manual_gates payload (UTC date, matching pipeline tz discipline)
+    manual_gates = {
+        k: {"value": v, "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
+        for k, v in parsed_gates.items()
+    }
+
+    # Inject + recompute hash
+    new_payload = SnapshotWriter.inject_manual_gates(snapshot, manual_gates)
+
+    # Atomic write with pid-suffixed tmp (concurrency-safe)
+    tmp = SNAPSHOTS_DIR / f"{args.session}.{os.getpid()}.tmp"
+    tmp.write_bytes(SnapshotWriter._canonical_bytes(new_payload) + b"\n")
+    tmp.replace(out_path)
+
+    log.info("Manual gates set on %s: %s", out_path, sorted(manual_gates))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quant Strategy Desk — data CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -178,12 +247,28 @@ def main() -> None:
         help="Override snapshot path (default: local/snapshots/{session}.json)",
     )
 
+    # ---- set-manual subcommand ----
+    manual_p = sub.add_parser(
+        "set-manual", help="Set manual categorical gates on an existing snapshot"
+    )
+    manual_p.add_argument("--session", required=True, help="Session in YYYY-MM format")
+    manual_p.add_argument(
+        "--gate",
+        action="append",
+        dest="gate",
+        metavar="GATE=VALUE",
+        required=True,
+        help='Categorical gate assignment, e.g. --gate hormuz=Open --gate "ecb=Hold or cut"',
+    )
+
     args = parser.parse_args()
 
     if args.command == "fetch":
         _cmd_fetch(args)
     elif args.command == "gate_eval":
         _cmd_gate_eval(args)
+    elif args.command == "set-manual":
+        _cmd_set_manual(args)
 
 
 if __name__ == "__main__":

@@ -75,6 +75,7 @@ class GateResult(TypedDict):
     source_series_id: str | None
     staleness_days: int | None
     data_source: DataSource
+    as_of: str | None
 
 
 class GateReport(TypedDict):
@@ -98,6 +99,7 @@ SERIES_TO_GATE: dict[str, str] = {
     "PAYEMS": "us_payrolls",
     "EXR.D.USD.EUR.SP00.A": "eur_usd",
     "DCOILBRENTEU": "brent",
+    "^STOXX": "stoxx600_vs_50wk_ma",
 }
 
 # Per-gate staleness thresholds (amber/red age in days).
@@ -107,6 +109,7 @@ _GATE_STALENESS: dict[str, dict[str, int]] = {
     "us_payrolls": {"amber": 45, "red": 60},
     "eur_usd": {"amber": 5, "red": 10},
     "brent": {"amber": 5, "red": 10},
+    "stoxx600_vs_50wk_ma": {"amber": 5, "red": 10},
 }
 
 
@@ -249,6 +252,8 @@ def _validate_schema(snapshot: dict, gates_config: dict) -> None:
     - Gates absent from both series and manual_gates trigger Data Failure Protocol
       (treated as unavailable inside evaluate_gates, not raised here).
     - Schema version check: refuses if snapshot.schema_version > KNOWN_MAX.
+    - READ-SIDE PERMISSIVE: categorical manual gates must have valid tier labels.
+      Numeric manual gates (legacy) are skipped — never label-checked.
     """
     schema_version = snapshot.get("schema_version", 1)
     if schema_version > KNOWN_MAX_SCHEMA_VERSION:
@@ -265,6 +270,21 @@ def _validate_schema(snapshot: dict, gates_config: dict) -> None:
             f"Unknown gate(s) in snapshot.manual_gates: {sorted(unknown)}. "
             f"Known gates: {sorted(known_gates)}"
         )
+
+    # READ-SIDE PERMISSIVE validation: categorical manual gates must have valid tier labels.
+    # Numeric manual gates (legacy, e.g. brent/stoxx in 2026-04.json) are skipped.
+    deployment_gates = gates_config.get("deployment_gates", {})
+    for gate, mg in manual_gates.items():
+        gate_cfg = deployment_gates.get(gate, {})
+        if gate_cfg.get("kind") == "categorical":
+            # Extract value the same way the reader does (mg.get — a malformed dict
+            # missing "value" yields None → a clean ValueError below, not a KeyError).
+            value = mg.get("value") if isinstance(mg, dict) else mg
+            valid_values = set(gate_cfg.get("tiers", {}).values())
+            if value not in valid_values:
+                raise ValueError(
+                    f"Manual gate {gate!r} value {value!r} not a valid tier label: {sorted(valid_values)}"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +411,7 @@ def evaluate_gates(
         source_series_id = None
         staleness_days = None
         data_source: DataSource = "unavailable"
+        as_of = None
 
         # 1. Try automated series first
         for series_id, mapped_gate in SERIES_TO_GATE.items():
@@ -412,7 +433,9 @@ def evaluate_gates(
             mg = manual_gates[gate_name]
             if isinstance(mg, dict):
                 value = mg.get("value")
+                # D4: set-manual writes {value, as_of} (no staleness_days) → None → cached+None → GREEN data-confidence (fresh-by-design). Legacy snapshots may carry staleness_days.
                 staleness_days = mg.get("staleness_days")
+                as_of = mg.get("as_of")
             else:
                 value = mg
             data_source = "cached"
@@ -441,6 +464,7 @@ def evaluate_gates(
             source_series_id=source_series_id,
             staleness_days=staleness_days,
             data_source=data_source,
+            as_of=as_of,
         )
 
         market_tiers.append(tier)
@@ -530,11 +554,15 @@ def render_table(report: GateReport, fmt: Literal["markdown", "json"]) -> str:
     ]
     for gate_name, result in report["gates"].items():
         tier_display = f"**{result['tier']}**"
-        staleness = (
-            str(result["staleness_days"])
-            if result["staleness_days"] is not None
-            else "—"
-        )
+        # Staleness column: show staleness_days if present, else as_of if present, else —
+        staleness_days = result.get("staleness_days")
+        as_of = result.get("as_of")
+        if staleness_days is not None:
+            staleness = str(staleness_days)
+        elif as_of:
+            staleness = f"as of {as_of}"
+        else:
+            staleness = "—"
         value_display = str(result["value"]) if result["value"] is not None else "—"
         lines.append(
             f"| {gate_name} | {value_display} | {tier_display} "

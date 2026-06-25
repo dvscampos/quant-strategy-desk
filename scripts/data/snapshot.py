@@ -81,6 +81,18 @@ class SnapshotWriter:
         return path
 
     @classmethod
+    def inject_manual_gates(cls, payload: dict, manual_gates: dict) -> dict:
+        """Return a NEW payload with manual_gates merged in and the hash recomputed.
+        Pure: the input dict is NOT mutated (deep-copied). Does not touch build_payload."""
+        import copy
+        clone = copy.deepcopy(payload)
+        merged = {**clone.get("manual_gates", {}), **manual_gates}
+        clone["manual_gates"] = merged
+        clone["snapshot_hash"] = ""
+        clone["snapshot_hash"] = cls.compute_hash(clone)
+        return clone
+
+    @classmethod
     def verify(cls, path: Path) -> bool:
         payload = json.loads(path.read_bytes())
         claimed = payload.get("snapshot_hash", "")

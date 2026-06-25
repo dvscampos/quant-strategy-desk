@@ -151,9 +151,14 @@ Every pipeline step must be safely re-runnable. Use upsert logic (`INSERT ... ON
       "vintage":   "2026-05-14",
       "units":     "index_1982_84_eq_100"
     }
-  ]
+  ],
+  "manual_gates": {
+    "hormuz": { "value": "Open", "as_of": "2026-05-17" }
+  }
 }
 ```
+
+> `manual_gates` is optional and additive (no `schema_version` bump — `gate_eval` reads it at version 1). It carries operator-supplied categorical gate judgements; see the field spec and governance notes below.
 
 ### Field spec
 | Field | Type | Meaning |
@@ -162,12 +167,15 @@ Every pipeline step must be safely re-runnable. Use upsert logic (`INSERT ... ON
 | `session` | `YYYY-MM` | Session the snapshot belongs to |
 | `snapshot_hash` | `sha256:<hex>` | Hash over the canonical form with `snapshot_hash` set to `""` |
 | `series` | array of observations | One entry per (source, series_id) |
-| `series[].source` | `"FRED"` \| `"ECB"` (T1) | Provider that supplied the datapoint |
+| `series[].source` | `"FRED"` \| `"ECB"` \| `"EUROSTAT"` \| `"YFINANCE"` | Provider that supplied the datapoint |
 | `series[].series_id` | string | Provider-specific series identifier |
 | `series[].as_of` | `YYYY-MM-DD` | Date the datapoint itself refers to |
 | `series[].value` | number (no NaN/Inf) | Datapoint value |
 | `series[].vintage` | `YYYY-MM-DD` | Date the provider released this datapoint |
-| `series[].units` | string, stable per series | e.g. `pct`, `index_1982_84_eq_100` |
+| `series[].units` | string, stable per series | e.g. `pct`, `index_1982_84_eq_100`, `pct_deviation_from_ma` |
+| `manual_gates` | object (optional) | Operator-supplied categorical gate judgements (hormuz/ecb/tariff). Written only via `set-manual`. |
+| `manual_gates[gate].value` | string (categorical tier label) | Operator judgement, validated against the gate's tier labels at write time. |
+| `manual_gates[gate].as_of` | `YYYY-MM-DD` (UTC) | Date the judgement was entered. **Audit-only** — `gate_eval` reads `value` (and, for legacy snapshots, `staleness_days`); it does not consume `as_of` for tiering. |
 
 ### Canonicalisation rule (hash input)
 1. Sorted keys at every level.
@@ -188,3 +196,5 @@ jq -cS . local/snapshots/2026-05.json \
 * The HTTP response cache (`data/.http_cache/`) is excluded from the audit trail.
 * `vintage` must be populated from the provider response; never defaulted to the session date.
 * Providers raise on unknown/missing fields rather than inventing substitutes (see Data Degradation Protocol in `docs/RISK_FRAMEWORK.md`).
+* `manual_gates` are written ONLY by the `set-manual` subcommand (which re-verifies the existing `snapshot_hash`, injects, and recomputes) — never by hand-editing the JSON, which would invalidate the hash and is refused by `gate_eval`. `set-manual` accepts only the categorical judgement gates (hormuz/ecb/tariff); numeric gates are fetched, not entered.
+* The `YFINANCE` equity provider (STOXX 600 → 250-trading-day MA deviation) fetches via yfinance and does NOT use the shared `HttpClient` on-disk cache — so it has no DDP stale-cache fallback that FRED/ECB/Eurostat enjoy. A failed equity fetch surfaces as `data_source: unavailable → RED` (visible, never silent).

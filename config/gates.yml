@@ -141,6 +141,7 @@ deployment_gates:
       AMBER: {min: -2, max: 2}     # straddling MA (within ±2%)
       RED:   {max: -2}             # clearly below MA (< -2%)
     red_action: "Abort European equity deployment"
+    # Computed by EquityMaProvider as a 250-trading-day MA on daily ^STOXX closes (= 50 weeks × 5 trading days); value = (latest close − MA250)/MA250 × 100.
 
 # Aggregate rule applied after classifying each gate individually.
 gate_aggregate:
@@ -229,6 +230,12 @@ data_staleness:
       source: EUROSTAT
       amber_age_days: 55
       red_age_days: 90
+
+    # yfinance series (equity index level → derived MA deviation)
+    "^STOXX":
+      source: YFINANCE
+      amber_age_days: 5
+      red_age_days: 10
 
   retry:
     max_attempts: 3

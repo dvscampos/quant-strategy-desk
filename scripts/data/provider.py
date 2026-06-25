@@ -14,7 +14,7 @@ from typing import ClassVar
 
 @dataclass(frozen=True)
 class SeriesObservation:
-    source: str        # "FRED" | "ECB"
+    source: str        # "FRED" | "ECB" | "EUROSTAT" | "YFINANCE"
     series_id: str     # e.g. "CPIAUCSL", "DFR"
     as_of: str         # ISO date of the datapoint itself (YYYY-MM-DD)
     value: float

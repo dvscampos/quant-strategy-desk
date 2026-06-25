@@ -49,6 +49,7 @@
 | 031 | S-24 brent fetch wire-up (PARTIAL) + S-25 stale-core-macro surfacing into Data_Confidence_Tier (DONE; per-series render row → S-25d) | DONE | Daniel | 2026-06-17 | 2026-06-17 |
 | 032 | S-25c — replace dead ECB euro-area HICP key with a Eurostat ei_cphi_m provider (new EUROSTAT archetype; thresholds 55/90) | DONE | Daniel | 2026-06-18 | 2026-06-20 |
 | 033 | S-25d — per-series ungated core-macro visibility in render_table (non-pipe note block; visibility-only, no re-tier) + parity_check us_payrolls gate-id alias | DONE | Daniel | 2026-06-21 | 2026-06-22 |
+| 034 | S-24-remainder — equity-vs-50wMA gate via new yfinance `EquityMaProvider` (^STOXX, 250-day MA proxy, band-guard) + structured manual-input slot (`set-manual` subcommand, `manual_gates` schema key) for hormuz/ecb/tariff | DONE | Daniel | 2026-06-23 | 2026-06-25 |
 
 ## When to write a proposal
 

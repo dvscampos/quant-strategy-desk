@@ -794,3 +794,147 @@ class TestS25dPerSeriesRender:
         report = evaluate_gates(snap, gates, verify_hash=False)
         rec = report["data_confidence_series"][0]
         assert rec["label"] == "SOME_UNMAPPED_ID"
+
+
+# ---------------------------------------------------------------------------
+# S-24 (Proposal 034 Leg A) — equity gate (^STOXX) end-to-end integration
+# ---------------------------------------------------------------------------
+
+class TestEquityGateEndToEnd:
+    def test_stoxx_live_series_scores_green(self):
+        # End-to-end: a synthetic snapshot with ^STOXX series → assert gate scores GREEN
+        snap = _make_snapshot(
+            series=[
+                {
+                    "source": "YFINANCE",
+                    "series_id": "^STOXX",
+                    "as_of": "2026-06-23",
+                    "value": 9.31,
+                    "vintage": "2026-06-23",
+                    "units": "pct_deviation_from_ma",
+                }
+            ],
+            manual_gates={
+                "vix": {"value": 15.0},
+                "hormuz": {"value": "Open"},
+            },
+        )
+        snap["as_of"] = "2026-06-23T10:00:00Z"
+        gates = {
+            "gate_aggregate": {"amber_count_escalation": 3},
+            "deployment_gates": {
+                "vix": NUMERIC_GATE_CFG,
+                "hormuz": CATEGORICAL_GATE_CFG,
+                "stoxx600_vs_50wk_ma": INVERTED_GATE_CFG,
+            },
+        }
+        report = evaluate_gates(snap, gates, verify_hash=False)
+        assert report["gates"]["stoxx600_vs_50wk_ma"]["data_source"] == "live"
+        assert report["gates"]["stoxx600_vs_50wk_ma"]["tier"] == "GREEN"
+
+    def test_stoxx_stale_penalty_demotes_green_to_amber(self):
+        # Staleness penalty test: vintage > 10 days before as_of → downgraded one step
+        from datetime import date, timedelta
+        snap_date = date(2026, 6, 23)
+        vintage = snap_date - timedelta(days=11)  # 11 days stale (red threshold = 10)
+
+        snap = _make_snapshot(
+            series=[
+                {
+                    "source": "YFINANCE",
+                    "series_id": "^STOXX",
+                    "as_of": (snap_date - timedelta(days=1)).isoformat(),
+                    "value": 9.31,   # would be GREEN without stale penalty
+                    "vintage": vintage.isoformat(),
+                    "units": "pct_deviation_from_ma",
+                }
+            ],
+            manual_gates={
+                "vix": {"value": 15.0},
+                "hormuz": {"value": "Open"},
+            },
+        )
+        snap["as_of"] = snap_date.isoformat() + "T10:00:00Z"
+        gates = {
+            "gate_aggregate": {"amber_count_escalation": 3},
+            "deployment_gates": {
+                "vix": NUMERIC_GATE_CFG,
+                "hormuz": CATEGORICAL_GATE_CFG,
+                "stoxx600_vs_50wk_ma": INVERTED_GATE_CFG,
+            },
+            "data_staleness": {
+                "series": {
+                    "^STOXX": {"source": "YFINANCE", "amber_age_days": 5, "red_age_days": 10}
+                }
+            },
+        }
+        report = evaluate_gates(snap, gates, verify_hash=False)
+        # GREEN demoted to AMBER by stale penalty
+        assert report["gates"]["stoxx600_vs_50wk_ma"]["tier"] == "AMBER"
+
+
+# ---------------------------------------------------------
+# Proposal 034 Leg B — manual categorical gates
+# ---------------------------------------------------------
+
+
+def test_validate_schema_rejects_bad_categorical_manual_value():
+    """READ-SIDE PERMISSIVE: reject invalid categorical manual gate value."""
+    gates = {
+        "deployment_gates": {
+            "hormuz": {
+                "kind": "categorical",
+                "tiers": {"GREEN": "Open", "AMBER": "Threatened / exercises", "RED": "Closed"},
+            }
+        },
+        "gate_aggregate": {"amber_count_escalation": 3},
+        "data_staleness": {"series": {}},
+    }
+    snap = _make_snapshot(
+        session="test",
+        series=[],
+        manual_gates={"hormuz": {"value": "open"}},  # lowercase, invalid
+    )
+    with pytest.raises(ValueError, match="Manual gate 'hormuz' value 'open' not a valid tier label"):
+        evaluate_gates(snap, gates, verify_hash=False)
+
+
+def test_validate_schema_passes_legacy_2026_04_with_numeric_manual_gates(tmp_path: Path):
+    """READ-SIDE PERMISSIVE: legacy numeric manual gates (brent/stoxx) pass through unvalidated."""
+    import yaml
+
+    # Load live gates config
+    gates_path = Path(__file__).parent.parent / "config" / "gates.yml"
+    gates_config = yaml.safe_load(gates_path.read_text(encoding="utf-8"))
+
+    # Load 2026-04.json snapshot
+    snapshot_path = Path(__file__).parent.parent / "local" / "snapshots" / "2026-04.json"
+    snapshot = json.loads(snapshot_path.read_bytes())
+
+    # This should NOT raise — numeric manual gates (brent, stoxx600_vs_50wk_ma) are legacy and skipped
+    report = evaluate_gates(snapshot, gates_config, verify_hash=False)
+    assert "brent" in report["gates"]
+    assert "stoxx600_vs_50wk_ma" in report["gates"]
+
+
+def test_manual_gate_as_of_renders_in_staleness_column():
+    """Manual gate with as_of renders 'as of <date>' in the Staleness column."""
+    gates = {
+        "deployment_gates": {
+            "hormuz": {
+                "kind": "categorical",
+                "tiers": {"GREEN": "Open", "AMBER": "Threatened / exercises", "RED": "Closed"},
+            }
+        },
+        "gate_aggregate": {"amber_count_escalation": 3},
+        "data_staleness": {"series": {}},
+    }
+    snap = _make_snapshot(
+        session="test",
+        series=[],
+        manual_gates={"hormuz": {"value": "Open", "as_of": "2026-06-25"}},
+    )
+    report = evaluate_gates(snap, gates, verify_hash=False)
+    markdown = render_table(report, "markdown")
+    # Should contain "as of 2026-06-25" in the hormuz row
+    assert "as of 2026-06-25" in markdown
